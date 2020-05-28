@@ -1,0 +1,8 @@
+[package]
+name = "rify"
+version = "0.1.0"
+authors = ["Andrew Dirksen <andrew@dirksen.com>"]
+edition = "2018"
+description = "unfinishe sketch of an RDF reasoner that operates on RIF-like conjunctive rules"
+
+[dependencies]
