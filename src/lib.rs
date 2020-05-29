@@ -1,5 +1,7 @@
 extern crate core;
 
+use std::collections::BTreeMap;
+
 mod vecset;
 
 enum Scoped<T> {
@@ -13,9 +15,16 @@ struct Triple<T> {
     object: T,
 }
 
-struct Rule<T> {
-    if_all: Vec<Triple<Scoped<T>>>,
-    then: Triple<Scoped<T>>,
+struct If<T: Ord> {
+    if_all: Vec<Triple<usize>>,
+    instantiations: Instantiations<T>,
+}
+
+type Instantiations<T> = BTreeMap<usize, T>;
+
+struct Rule<T: Ord> {
+    requirements: If<T>,
+    implies: Triple<usize>,
 }
 
 #[cfg(test)]
@@ -37,8 +46,6 @@ mod tests {
         osp: VecSet<usize>,
     }
 
-    struct Instantiation;
-
     impl<T: Ord + Clone> TripleStore<T> {
         fn insert(&mut self, triple: Triple<T>) {
             let new = self
@@ -58,7 +65,7 @@ mod tests {
 
         /// Find in this tuple store all possible valid instantiations of rule. Report the
         /// consequences of all such instantiations through a callback.
-        fn apply(&self, rule: Rule<T>, cb: impl FnMut(&Instantiation)) {
+        fn apply(&self, rule: Rule<T>, cb: impl FnMut(&Instantiations<T>)) {
             // find the the requirement in the rule which has the smallest search space
 
             // If there is only one requirement left in the rule set, iterate through every possible
@@ -70,56 +77,31 @@ mod tests {
         }
 
         /// Return a slice representing all possible matches to the pattern provided.
-        fn matches(&self, pattern: Triple<Scoped<T>>) -> &[usize] {
+        fn matches(&self, pattern: Triple<usize>, instantiations: &Instantiations<T>) -> &[usize] {
+            let pattern: (Option<Subj<&T>>, Option<Prop<&T>>, Option<Obje<&T>>) = (
+                instantiations.get(&pattern.subject).map(Subj),
+                instantiations.get(&pattern.property).map(Prop),
+                instantiations.get(&pattern.subject).map(Obje),
+            );
             match pattern {
-                Triple {
-                    subject: Scoped::Global(s),
-                    property: Scoped::Global(p),
-                    object: Scoped::Global(o),
-                } => self
+                (Some(s), Some(p), Some(o)) => self
                     .spo
-                    .range(move |b| as_spo(&self.claims[*b]).cmp(&(Subj(&s), Prop(&p), Obje(&o)))),
-                Triple {
-                    subject: Scoped::Global(s),
-                    property: Scoped::Global(p),
-                    object: Scoped::Local(_),
-                } => self
+                    .range(|b| as_spo(&self.claims[*b]).cmp(&(s.clone(), p.clone(), o.clone()))),
+                (Some(s), Some(p), None) => self
                     .spo
-                    .range(move |b| as_sp(&self.claims[*b]).cmp(&(Subj(&s), Prop(&p)))),
-                Triple {
-                    subject: Scoped::Global(s),
-                    property: Scoped::Local(_),
-                    object: Scoped::Global(o),
-                } => self
+                    .range(|b| as_sp(&self.claims[*b]).cmp(&(s.clone(), p.clone()))),
+                (Some(s), None, Some(o)) => self
                     .osp
-                    .range(move |b| as_os(&self.claims[*b]).cmp(&(Obje(&o), Subj(&s)))),
-                Triple {
-                    subject: Scoped::Global(s),
-                    property: Scoped::Local(_),
-                    object: Scoped::Local(_),
-                } => self.spo.range(move |b| self.claims[*b].subject.cmp(&s)),
-                Triple {
-                    subject: Scoped::Local(_),
-                    property: Scoped::Global(p),
-                    object: Scoped::Global(o),
-                } => self
-                    .osp
-                    .range(move |b| as_po(&self.claims[*b]).cmp(&(Prop(&p), Obje(&o)))),
-                Triple {
-                    subject: Scoped::Local(_),
-                    property: Scoped::Global(p),
-                    object: Scoped::Local(_),
-                } => self.pos.range(move |b| self.claims[*b].property.cmp(&p)),
-                Triple {
-                    subject: Scoped::Local(_),
-                    property: Scoped::Local(_),
-                    object: Scoped::Global(o),
-                } => self.osp.range(move |b| self.claims[*b].object.cmp(&o)),
-                Triple {
-                    subject: Scoped::Local(_),
-                    property: Scoped::Local(_),
-                    object: Scoped::Local(_),
-                } => self.spo.as_slice(),
+                    .range(|b| as_os(&self.claims[*b]).cmp(&(o.clone(), s.clone()))),
+                (Some(s), None, None) => self.spo.range(|b| Subj(&self.claims[*b].subject).cmp(&s)),
+                (None, Some(p), Some(o)) => self
+                    .pos
+                    .range(|b| as_po(&self.claims[*b]).cmp(&(p.clone(), o.clone()))),
+                (None, Some(p), None) => {
+                    self.pos.range(|b| Prop(&self.claims[*b].property).cmp(&p))
+                }
+                (None, None, Some(o)) => self.osp.range(|b| Obje(&self.claims[*b].object).cmp(&o)),
+                (None, None, None) => self.spo.as_slice(),
             }
         }
     }
