@@ -1,7 +1,6 @@
-extern crate core;
+use crate::mapstack::MapStack;
 
-use std::collections::BTreeMap;
-
+mod mapstack;
 mod vecset;
 
 enum Scoped<T> {
@@ -9,22 +8,95 @@ enum Scoped<T> {
     Global(T),
 }
 
-struct Triple<T> {
-    subject: T,
-    property: T,
-    object: T,
+#[derive(Clone)]
+struct Triple {
+    subject: Subj,
+    property: Prop,
+    object: Obje,
 }
 
-struct If<T: Ord> {
-    if_all: Vec<Triple<usize>>,
-    instantiations: Instantiations<T>,
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Subj(usize);
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Prop(usize);
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Obje(usize);
+
+impl From<Triple> for (Subj, Prop, Obje) {
+    fn from(other: Triple) -> Self {
+        (other.subject, other.property, other.object)
+    }
+}
+impl From<Triple> for (Prop, Obje, Subj) {
+    fn from(other: Triple) -> Self {
+        (other.property, other.object, other.subject)
+    }
+}
+impl From<Triple> for (Obje, Subj, Prop) {
+    fn from(other: Triple) -> Self {
+        (other.object, other.subject, other.property)
+    }
+}
+impl From<Triple> for (Subj, Prop) {
+    fn from(other: Triple) -> Self {
+        (other.subject, other.property)
+    }
+}
+impl From<Triple> for (Prop, Obje) {
+    fn from(other: Triple) -> Self {
+        (other.property, other.object)
+    }
+}
+impl From<Triple> for (Obje, Subj) {
+    fn from(other: Triple) -> Self {
+        (other.object, other.subject)
+    }
+}
+impl From<Triple> for Prop {
+    fn from(other: Triple) -> Self {
+        other.property
+    }
+}
+impl From<Triple> for Subj {
+    fn from(other: Triple) -> Self {
+        other.subject
+    }
+}
+impl From<Triple> for Obje {
+    fn from(other: Triple) -> Self {
+        other.object
+    }
+}
+impl Triple {
+    fn spo(&self) -> (Subj, Prop, Obje) {
+        self.clone().into()
+    }
+    fn pos(&self) -> (Prop, Obje, Subj) {
+        self.clone().into()
+    }
+    fn osp(&self) -> (Obje, Subj, Prop) {
+        self.clone().into()
+    }
+    fn sp(&self) -> (Subj, Prop) {
+        self.clone().into()
+    }
+    fn po(&self) -> (Prop, Obje) {
+        self.clone().into()
+    }
+    fn os(&self) -> (Obje, Subj) {
+        self.clone().into()
+    }
 }
 
-type Instantiations<T> = BTreeMap<usize, T>;
+type Instantiations = MapStack<usize, usize>;
 
-struct Rule<T: Ord> {
-    requirements: If<T>,
-    implies: Triple<usize>,
+// invariants held:
+//   if_all is not empty
+//   all keys in instantiations appear in if_all
+struct Rule {
+    if_all: Vec<Triple>,
+    instantiations: Instantiations,
+    implies: Triple,
 }
 
 #[cfg(test)]
@@ -32,102 +104,102 @@ mod tests {
     use super::*;
     use vecset::VecSet;
 
-    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-    struct Subj<T>(T);
-    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-    struct Prop<T>(T);
-    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-    struct Obje<T>(T);
-
-    struct TripleStore<T: Ord> {
-        claims: Vec<Triple<T>>,
+    struct TripleStore {
+        claims: Vec<Triple>,
         spo: VecSet<usize>,
         pos: VecSet<usize>,
         osp: VecSet<usize>,
     }
 
-    impl<T: Ord + Clone> TripleStore<T> {
-        fn insert(&mut self, triple: Triple<T>) {
+    impl TripleStore {
+        fn insert(&mut self, triple: Triple) {
             let new = self
                 .spo
-                .range(|e| as_spo(&self.claims[*e]).cmp(&as_spo(&triple)))
+                .range(|e| self.claims[*e].spo().cmp(&triple.spo()))
                 .len()
                 .eq(&0);
             if new {
                 let mut claims = core::mem::replace(&mut self.claims, Vec::new());
                 claims.push(triple);
                 let new_index = claims.len();
-                insert_transformed(&mut self.spo, new_index, |a| as_spo(&claims[*a]));
-                insert_transformed(&mut self.pos, new_index, |a| as_pos(&claims[*a]));
-                insert_transformed(&mut self.osp, new_index, |a| as_osp(&claims[*a]));
+                insert_transformed(&mut self.spo, new_index, |a| claims[*a].spo());
+                insert_transformed(&mut self.pos, new_index, |a| claims[*a].pos());
+                insert_transformed(&mut self.osp, new_index, |a| claims[*a].osp());
             }
         }
 
         /// Find in this tuple store all possible valid instantiations of rule. Report the
-        /// consequences of all such instantiations through a callback.
-        fn apply(&self, rule: Rule<T>, cb: impl FnMut(&Instantiations<T>)) {
-            // find the the requirement in the rule which has the smallest search space
+        /// instantiations through a callback.
+        /// TODO: This function is recursive, but not tail recursive. Rules that are too long may
+        ///       consume the stack.
+        fn apply(
+            &self,
+            if_all: &[Triple],
+            instantiations: &mut Instantiations,
+            cb: &mut impl FnMut(&Instantiations),
+        ) {
+            if if_all.is_empty() {
+                cb(&instantiations);
+                return;
+            }
 
-            // If there is only one requirement left in the rule set, iterate through every possible
-            // instantiation of that requirement.
+            // find the the requirement in the rule which has the smallest search space
+            let index_smallest = (0..if_all.len())
+                .min_by_key(|index| self.matches(&if_all[*index], instantiations).len())
+                .expect("if_all to be empty");
+            let smallest_subrule = &if_all[index_smallest];
+            let smallest_space = self.matches(smallest_subrule, instantiations);
 
             // For every possible concrete instantiation of that rule, pin the names to activate the
-            // instantiation then recurse.
-            unimplemented!()
+            // instantiation, then recurse.
+            for index in smallest_space {
+                let triple = &self.claims[*index];
+                let to_write = &[
+                    (smallest_subrule.subject.0, triple.subject.0),
+                    (smallest_subrule.property.0, triple.property.0),
+                    (smallest_subrule.object.0, triple.object.0),
+                ];
+                for (k, v) in to_write {
+                    debug_assert!(
+                        if let Some(committed_v) = instantiations.as_ref().get(&k) {
+                            committed_v == v
+                        } else {
+                            true
+                        },
+                        "rebinding of an instantiated value should never occur"
+                    );
+                    instantiations.write(*k, *v);
+                }
+                self.apply(if_all, instantiations, cb);
+                for _ in to_write {
+                    instantiations.undo().unwrap();
+                }
+            }
         }
 
         /// Return a slice representing all possible matches to the pattern provided.
-        fn matches(&self, pattern: Triple<usize>, instantiations: &Instantiations<T>) -> &[usize] {
-            let pattern: (Option<Subj<&T>>, Option<Prop<&T>>, Option<Obje<&T>>) = (
-                instantiations.get(&pattern.subject).map(Subj),
-                instantiations.get(&pattern.property).map(Prop),
-                instantiations.get(&pattern.subject).map(Obje),
+        /// pattern is in a local scope. instantiations is a partial translation of that
+        /// local scope to the global scope represented by self.claims
+        fn matches(&self, pattern: &Triple, instantiations: &Instantiations) -> &[usize] {
+            let inst = instantiations.as_ref();
+            let pattern: (Option<Subj>, Option<Prop>, Option<Obje>) = (
+                inst.get(&pattern.subject.0).cloned().map(Subj),
+                inst.get(&pattern.property.0).cloned().map(Prop),
+                inst.get(&pattern.subject.0).cloned().map(Obje),
             );
             match pattern {
-                (Some(s), Some(p), Some(o)) => self
-                    .spo
-                    .range(|b| as_spo(&self.claims[*b]).cmp(&(s.clone(), p.clone(), o.clone()))),
-                (Some(s), Some(p), None) => self
-                    .spo
-                    .range(|b| as_sp(&self.claims[*b]).cmp(&(s.clone(), p.clone()))),
-                (Some(s), None, Some(o)) => self
-                    .osp
-                    .range(|b| as_os(&self.claims[*b]).cmp(&(o.clone(), s.clone()))),
-                (Some(s), None, None) => self.spo.range(|b| Subj(&self.claims[*b].subject).cmp(&s)),
-                (None, Some(p), Some(o)) => self
-                    .pos
-                    .range(|b| as_po(&self.claims[*b]).cmp(&(p.clone(), o.clone()))),
-                (None, Some(p), None) => {
-                    self.pos.range(|b| Prop(&self.claims[*b].property).cmp(&p))
+                (Some(s), Some(p), Some(o)) => {
+                    self.spo.range(|b| self.claims[*b].spo().cmp(&(s, p, o)))
                 }
-                (None, None, Some(o)) => self.osp.range(|b| Obje(&self.claims[*b].object).cmp(&o)),
+                (Some(s), Some(p), None) => self.spo.range(|b| self.claims[*b].sp().cmp(&(s, p))),
+                (Some(s), None, Some(o)) => self.osp.range(|b| self.claims[*b].os().cmp(&(o, s))),
+                (None, Some(p), Some(o)) => self.pos.range(|b| self.claims[*b].po().cmp(&(p, o))),
+                (Some(s), None, None) => self.spo.range(|b| self.claims[*b].subject.cmp(&s)),
+                (None, Some(p), None) => self.pos.range(|b| self.claims[*b].property.cmp(&p)),
+                (None, None, Some(o)) => self.osp.range(|b| self.claims[*b].object.cmp(&o)),
                 (None, None, None) => self.spo.as_slice(),
             }
         }
-    }
-
-    fn as_spo<T>(a: &Triple<T>) -> (Subj<&T>, Prop<&T>, Obje<&T>) {
-        (Subj(&a.subject), Prop(&a.property), Obje(&a.object))
-    }
-
-    fn as_pos<T>(a: &Triple<T>) -> (Prop<&T>, Obje<&T>, Subj<&T>) {
-        (Prop(&a.property), Obje(&a.object), Subj(&a.subject))
-    }
-
-    fn as_osp<T>(a: &Triple<T>) -> (Obje<&T>, Subj<&T>, Prop<&T>) {
-        (Obje(&a.object), Subj(&a.subject), Prop(&a.property))
-    }
-
-    fn as_sp<T>(a: &Triple<T>) -> (Subj<&T>, Prop<&T>) {
-        (Subj(&a.subject), Prop(&a.property))
-    }
-
-    fn as_po<T>(a: &Triple<T>) -> (Prop<&T>, Obje<&T>) {
-        (Prop(&a.property), Obje(&a.object))
-    }
-
-    fn as_os<T>(a: &Triple<T>) -> (Obje<&T>, Subj<&T>) {
-        (Obje(&a.object), Subj(&a.subject))
     }
 
     /// Add element to set, using S as a proxy type for ordering.
@@ -136,5 +208,11 @@ mod tests {
     }
 
     #[test]
-    fn ancestry() {}
+    fn ancestry() {
+        // initial facts: (0 parent 1), (1 parent 2), ... (n-1 parent n). (n parent 0)
+        // rules: (?a parent ?b) -> (?a ancestor ?b)
+        //        (?a ancestor ?b) and (?b ancestor ?c) -> (?a ancestor ?c)
+        
+        // expected logical result: for all a for all b (a ancestor b)
+    }
 }
