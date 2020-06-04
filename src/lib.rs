@@ -8,20 +8,20 @@ use crate::mapstack::MapStack;
 use crate::vecset::VecSet;
 use core::cmp::Ordering;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Triple {
     subject: Subj,
     property: Prop,
     object: Obje,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Subj(u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Prop(u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Obje(u32);
 
 impl Triple {
@@ -196,11 +196,100 @@ impl TripleStore {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use alloc::collections::BTreeMap;
+
     #[test]
     fn ancestry() {
-        // initial facts: (0 parent 1), (1 parent 2), ... (n-1 parent n). (n parent 0)
+        // increment argument and return it's initial value
+        fn inc(a: &mut u32) -> u32 {
+            *a += 1;
+            *a - 1
+        }
+
+        #[derive(Clone, Debug)]
+        struct Rule {
+            if_all: Vec<Triple>,
+            then: Vec<Triple>,
+            inst: Instantiations,
+        }
+
+        // entities
+        let mut count = 0u32;
+        let parent = inc(&mut count);
+        let ancestor = inc(&mut count);
+        let nodes: Vec<_> = (0..1000).map(|_| inc(&mut count)).collect();
+
+        // initial facts: (n0 parent n1), (n1 parent n2), ... (n[l-2] parent n[l-1])
+        //                (n[l-1] parent n0)
+        let facts: Vec<Triple> = nodes
+            .iter()
+            .zip(nodes.iter().cycle().skip(1))
+            .map(|(a, b)| Triple {
+                subject: Subj(*a),
+                property: Prop(parent),
+                object: Obje(*b),
+            })
+            .collect();
+
         // rules: (?a parent ?b) -> (?a ancestor ?b)
         //        (?a ancestor ?b) and (?b ancestor ?c) -> (?a ancestor ?c)
+        let rules = vec![
+            // (?a parent ?b) -> (?a ancestor ?b)
+            Rule {
+                if_all: vec![Triple {
+                    subject: Subj(0),
+                    property: Prop(1),
+                    object: Obje(2),
+                }],
+                then: vec![Triple {
+                    subject: Subj(0),
+                    property: Prop(3),
+                    object: Obje(2),
+                }],
+                inst: [(1u32, parent), (3u32, ancestor)].iter().cloned().collect(),
+            },
+            // (?a ancestor ?b) and (?b ancestor ?c) -> (?a ancestor ?c)
+            Rule {
+                if_all: vec![
+                    Triple {
+                        subject: Subj(1),
+                        property: Prop(0),
+                        object: Obje(2),
+                    },
+                    Triple {
+                        subject: Subj(2),
+                        property: Prop(0),
+                        object: Obje(3),
+                    },
+                ],
+                then: vec![Triple {
+                    subject: Subj(1),
+                    property: Prop(0),
+                    object: Obje(3),
+                }],
+                inst: [(0u32, ancestor)].iter().cloned().collect(),
+            },
+        ];
+
         // expected logical result: for all a for all b (a ancestor b)
+        let mut ts = TripleStore::new();
+        for fact in facts {
+            ts.insert(fact);
+        }
+        let start = std::time::Instant::now();
+        for rule in rules {
+            let mut results = Vec::<BTreeMap<u32, u32>>::new();
+            let Rule {
+                mut if_all,
+                then: _,
+                mut inst,
+            } = rule.clone();
+            ts.apply(&mut if_all, &mut inst, &mut |inst| {
+                results.push(inst.as_ref().clone())
+            });
+        }
+        dbg!(start.elapsed());
+        panic!();
     }
 }

@@ -1,8 +1,11 @@
 use alloc::collections::BTreeMap;
 use core::fmt;
+use core::fmt::Debug;
+use core::iter::FromIterator;
 
 /// A mapping that keeps a history of writes. Writes to the map effect "pushes" to a stack. Those
 /// "pushes" can be undone with a "pop".
+#[derive(Clone, Debug)]
 pub struct MapStack<K, V> {
     current: BTreeMap<K, V>,
     history: Vec<(K, Option<V>)>,
@@ -38,6 +41,16 @@ impl<K: Ord + Clone, V> MapStack<K, V> {
 impl<K, V> AsRef<BTreeMap<K, V>> for MapStack<K, V> {
     fn as_ref(&self) -> &BTreeMap<K, V> {
         &self.current
+    }
+}
+
+impl<K: Ord + Clone, V> FromIterator<(K, V)> for MapStack<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(kvs: T) -> Self {
+        let mut ret = Self::new();
+        for (k, v) in kvs.into_iter() {
+            ret.write(k, v);
+        }
+        ret
     }
 }
 

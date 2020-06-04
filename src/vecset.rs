@@ -10,7 +10,7 @@ impl<T> VecSet<T> {
         Self { sorted: Vec::new() }
     }
 
-    /// Insert a new element while maintining the ordering defined by the comparator function.
+    /// Insert a new element while maintaining the ordering defined by the comparator function.
     /// If the element already exists in the set according to the comparator it will not be
     /// inserted.
     pub fn insert(&mut self, a: T, f: impl Fn(&T, &T) -> Ordering) {
