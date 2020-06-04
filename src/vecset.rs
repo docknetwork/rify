@@ -6,6 +6,10 @@ pub struct VecSet<T> {
 }
 
 impl<T> VecSet<T> {
+    pub fn new() -> Self {
+        Self { sorted: Vec::new() }
+    }
+
     /// Insert a now element while maintining the ordering defined by the comparator function.
     /// If the element already exists in the set it will not be inserted.
     pub fn insert(&mut self, a: T, f: impl Fn(&T, &T) -> Ordering) {
