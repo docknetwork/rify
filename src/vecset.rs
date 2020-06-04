@@ -10,8 +10,9 @@ impl<T> VecSet<T> {
         Self { sorted: Vec::new() }
     }
 
-    /// Insert a now element while maintining the ordering defined by the comparator function.
-    /// If the element already exists in the set it will not be inserted.
+    /// Insert a new element while maintining the ordering defined by the comparator function.
+    /// If the element already exists in the set according to the comparator it will not be
+    /// inserted.
     pub fn insert(&mut self, a: T, f: impl Fn(&T, &T) -> Ordering) {
         match self.sorted.binary_search_by(|e| f(e, &a)) {
             Ok(_) => (),

@@ -1,3 +1,4 @@
+extern crate alloc;
 extern crate core;
 
 mod mapstack;
@@ -31,6 +32,7 @@ impl Triple {
             other.object,
         ))
     }
+
     fn cmp_pos(&self, other: &Self) -> Ordering {
         (self.property, self.object, self.subject).cmp(&(
             other.property,
@@ -38,6 +40,7 @@ impl Triple {
             other.subject,
         ))
     }
+
     fn cmp_osp(&self, other: &Self) -> Ordering {
         (self.object, self.subject, self.property).cmp(&(
             other.object,
@@ -45,27 +48,22 @@ impl Triple {
             other.property,
         ))
     }
+
     fn cmp_sp(&self, other: (Subj, Prop)) -> Ordering {
         (self.subject, self.property).cmp(&other)
     }
+
     fn cmp_po(&self, other: (Prop, Obje)) -> Ordering {
         (self.property, self.object).cmp(&other)
     }
+
     fn cmp_os(&self, other: (Obje, Subj)) -> Ordering {
         (self.object, self.subject).cmp(&other)
     }
 }
 
-type Instantiations = MapStack<u32, u32>;
-
-// // invariants held:
-// //   if_all is not empty
-// //   all keys in instantiations appear in if_all
-// struct Rule {
-//     if_all: Vec<Triple>,
-//     instantiations: Instantiations,
-//     implies: Triple,
-// }
+/// Bindings of slots within the context of a rule.
+pub type Instantiations = MapStack<u32, u32>;
 
 pub struct TripleStore {
     claims: Vec<Triple>,
@@ -85,55 +83,53 @@ impl TripleStore {
     }
 
     pub fn insert(&mut self, triple: Triple) {
-        let new = self.spo.range(|e| self.claims[*e].cmp_spo(&triple)).len() == 0;
-        if new {
+        let fresh = self
+            .spo
+            .as_slice()
+            .binary_search_by(|e| self.claims[*e].cmp_spo(&triple))
+            .is_err();
+        if fresh {
             let mut claims = core::mem::replace(&mut self.claims, Vec::new());
             claims.push(triple);
-            let new_index = claims.len();
-            self.spo
-                .insert(new_index, |a, b| claims[*a].cmp_spo(&claims[*b]));
-            self.pos
-                .insert(new_index, |a, b| claims[*a].cmp_pos(&claims[*b]));
-            self.osp
-                .insert(new_index, |a, b| claims[*a].cmp_osp(&claims[*b]));
+            let ni = claims.len() - 1;
+            self.spo.insert(ni, |a, b| claims[*a].cmp_spo(&claims[*b]));
+            self.pos.insert(ni, |a, b| claims[*a].cmp_pos(&claims[*b]));
+            self.osp.insert(ni, |a, b| claims[*a].cmp_osp(&claims[*b]));
             self.claims = claims;
         }
+        debug_assert_eq!(self.spo.as_slice().len(), self.claims.len());
+        debug_assert_eq!(self.pos.as_slice().len(), self.claims.len());
+        debug_assert_eq!(self.osp.as_slice().len(), self.claims.len());
     }
 
     /// Find in this tuple store all possible valid instantiations of rule. Report the
     /// instantiations through a callback.
     /// TODO: This function is recursive, but not tail recursive. Rules that are too long may
     ///       consume the stack.
-    /// TODO: This function does not terminate because fully instantiated rules are never
-    ///       pruned from if_all.
     pub fn apply(
         &self,
-        if_all: &[Triple],
+        rule: &mut [Triple],
         instantiations: &mut Instantiations,
         cb: &mut impl FnMut(&Instantiations),
     ) {
-        if if_all.is_empty() {
-            cb(&instantiations);
-            return;
-        }
+        let (strictest, mut less_strict) =
+            if let Some(s) = self.pop_strictest_requirement(rule, instantiations) {
+                s
+            } else {
+                cb(instantiations);
+                return;
+            };
 
-        // find the the requirement in the rule which has the smallest search space
-        let index_smallest = (0..if_all.len())
-            .min_by_key(|index| self.matches(&if_all[*index], instantiations).len())
-            .expect("if_all to be empty");
-        let smallest_subrule = &if_all[index_smallest];
-        let smallest_space = self.matches(smallest_subrule, instantiations);
-
-        // For every possible concrete instantiation of that rule, pin the names to activate the
-        // instantiation, then recurse.
-        for index in smallest_space {
+        // For every possible concrete instantiation fulfilling the requirement, bind the slots
+        // in the requirement to the instantiation then recurse.
+        for index in self.matches(strictest, instantiations) {
             let triple = &self.claims[*index];
-            let to_write = &[
-                (smallest_subrule.subject.0, triple.subject.0),
-                (smallest_subrule.property.0, triple.property.0),
-                (smallest_subrule.object.0, triple.object.0),
+            let to_write = [
+                (strictest.subject.0, triple.subject.0),
+                (strictest.property.0, triple.property.0),
+                (strictest.object.0, triple.object.0),
             ];
-            for (k, v) in to_write {
+            for (k, v) in &to_write {
                 debug_assert!(
                     if let Some(committed_v) = instantiations.as_ref().get(&k) {
                         committed_v == v
@@ -144,8 +140,8 @@ impl TripleStore {
                 );
                 instantiations.write(*k, *v);
             }
-            self.apply(if_all, instantiations, cb);
-            for _ in to_write {
+            self.apply(&mut less_strict, instantiations, cb);
+            for _ in &to_write {
                 instantiations.undo().unwrap();
             }
         }
@@ -178,12 +174,28 @@ impl TripleStore {
             (None, None, None) => self.spo.as_slice(),
         }
     }
+
+    /// Retrieve the requirement with the smallest number of possible instantiations from a rule.
+    /// Return that requirement, along with a slice of the rule that contains every requirement
+    /// except for the one that was retrieved.
+    /// Return None if there are no requirements in the rule.
+    ///
+    /// This function changes the ordering of the rule.
+    fn pop_strictest_requirement<'rule>(
+        &self,
+        rule: &'rule mut [Triple],
+        instantiations: &Instantiations,
+    ) -> Option<(&'rule Triple, &'rule mut [Triple])> {
+        let index_strictest = (0..rule.len())
+            .min_by_key(|index| self.matches(&rule[*index], instantiations).len())?;
+        rule.swap(0, index_strictest);
+        let (strictest, less_strict) = rule.split_first_mut().expect("rule to be non-empty");
+        Some((strictest, less_strict))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn ancestry() {
         // initial facts: (0 parent 1), (1 parent 2), ... (n-1 parent n). (n parent 0)

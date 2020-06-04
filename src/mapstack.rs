@@ -1,5 +1,5 @@
+use alloc::collections::BTreeMap;
 use core::fmt;
-use std::collections::BTreeMap;
 
 /// A mapping that keeps a history of writes. Writes to the map effect "pushes" to a stack. Those
 /// "pushes" can be undone with a "pop".
@@ -48,4 +48,3 @@ impl fmt::Display for NoMoreHistory {
         write!(f, "Attempted to pop from an empty stack.")
     }
 }
-impl std::error::Error for NoMoreHistory {}
