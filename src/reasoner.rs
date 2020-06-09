@@ -2,7 +2,7 @@ use crate::mapstack::MapStack;
 use crate::vecset::VecSet;
 use core::cmp::Ordering;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Triple {
     pub subject: Subj,
     pub property: Prop,
@@ -84,13 +84,15 @@ impl TripleStore {
         }
     }
 
-    pub fn insert(&mut self, triple: Triple) {
-        let fresh = self
-            .spo
+    pub fn contains(&self, triple: &Triple) -> bool {
+        self.spo
             .as_slice()
             .binary_search_by(|e| self.claims[*e].cmp_spo(&triple))
-            .is_err();
-        if fresh {
+            .is_ok()
+    }
+
+    pub fn insert(&mut self, triple: Triple) {
+        if !self.contains(&triple) {
             let mut claims = core::mem::replace(&mut self.claims, Vec::new());
             claims.push(triple);
             let ni = claims.len() - 1;
@@ -194,21 +196,21 @@ impl TripleStore {
         let (strictest, less_strict) = rule.split_first_mut().expect("rule to be non-empty");
         Some((strictest, less_strict))
     }
+
+    /// Get the list of every claim that has been inserted so far.
+    pub fn claims(&self) -> &[Triple] {
+        &self.claims
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::inc;
     use alloc::collections::BTreeMap;
 
     #[test]
     fn ancestry_raw() {
-        // increment argument and return it's initial value
-        fn inc(a: &mut u32) -> u32 {
-            *a += 1;
-            *a - 1
-        }
-
         #[derive(Clone, Debug)]
         struct Rule {
             if_all: Vec<Triple>,

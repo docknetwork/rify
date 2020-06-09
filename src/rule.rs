@@ -2,6 +2,7 @@
 //! rules directly is difficult for humans. This module provides a human friendly rule description
 //! datatype that can be lowered to the reasoner's rule representation.
 
+use crate::common::inc;
 use crate::reasoner;
 use crate::translator::Translator;
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -10,10 +11,12 @@ use core::iter::once;
 #[derive(Clone, Debug)]
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
+//
+// TODO: find a way to make fields non-public to protect invariant
 pub struct ReasonersRule {
-    if_all: Vec<reasoner::Triple>,  // contains locally scoped names
-    then: Vec<reasoner::Triple>,    // contains locally scoped names
-    inst: reasoner::Instantiations, // partially maps the local scope to some global scope
+    pub if_all: Vec<reasoner::Triple>,  // contains locally scoped names
+    pub then: Vec<reasoner::Triple>,    // contains locally scoped names
+    pub inst: reasoner::Instantiations, // partially maps the local scope to some global scope
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -198,12 +201,6 @@ fn iter_local_reasoner_entities<'a>(res: &'a [reasoner::Triple]) -> impl Iterato
             .chain(once(trip.property.0))
             .chain(once(trip.object.0))
     })
-}
-
-/// increment argument then retune previous value
-fn inc(a: &mut u32) -> u32 {
-    *a += 1;
-    *a - 1
 }
 
 #[cfg(test)]
