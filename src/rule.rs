@@ -4,31 +4,34 @@
 
 use crate::reasoner;
 use crate::translator::Translator;
-use alloc::collections::BTreeMap;
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::iter::once;
-use core::ops::Not;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+// invariants held:
+//   unbound names may not exists in `then` unless they exist also in `if_all`
 pub struct ReasonersRule {
-    pub if_all: Vec<reasoner::Triple>,
-    pub then: Vec<reasoner::Triple>,
-    pub inst: reasoner::Instantiations,
+    if_all: Vec<reasoner::Triple>,  // contains locally scoped names
+    then: Vec<reasoner::Triple>,    // contains locally scoped names
+    inst: reasoner::Instantiations, // partially maps the local scope to some global scope
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 pub enum Entity<T> {
     Any(String),
     Exactly(T),
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct Restriction<T> {
     pub subject: Entity<T>,
     pub property: Entity<T>,
     pub object: Entity<T>,
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+// invariants held:
+//   unbound names may not exists in `then` unless they exist also in `if_all`
 pub struct Rule<T> {
     if_all: Vec<Restriction<T>>,
     then: Vec<Restriction<T>>,
@@ -41,12 +44,10 @@ impl<T: Ord> Rule<T> {
     ) -> Result<Rule<T>, InvalidRule> {
         let if_unbound: BTreeSet<&String> = iter_entities(&if_all).filter_map(as_unbound).collect();
 
-        if iter_entities(&then)
-            .filter_map(as_unbound)
-            .all(|e| if_unbound.contains(e))
-            .not()
-        {
-            return Err(InvalidRule::UnboundImplied);
+        for unbound in iter_entities(&then).filter_map(as_unbound) {
+            if !if_unbound.contains(unbound) {
+                return Err(InvalidRule::UnboundImplied(unbound.clone()));
+            }
         }
 
         Ok(Self { if_all, then })
@@ -56,7 +57,7 @@ impl<T: Ord> Rule<T> {
         &self,
         tran: &Translator<T>,
     ) -> Result<ReasonersRule, NoTranslation<T>> {
-        // There are three dimensions of name at play here.
+        // There are three types of name at play here.
         // - human names are represented as Entities
         // - local names are local to the rule we are creating. they are represented as u32
         // - global names are from the translator. they are represented as u32
@@ -73,7 +74,7 @@ impl<T: Ord> Rule<T> {
             .map(|s| (s, inc(&mut next_local)))
             .collect();
 
-        // gets the local name for an human named entity
+        // gets the local name for a human_name
         let local_name = |entity: &Entity<T>| -> u32 {
             match entity {
                 Entity::Any(s) => unbound_map[s],
@@ -109,9 +110,42 @@ impl<T: Ord> Rule<T> {
     pub fn from_reasoners_rule<'rr>(
         rr: &'rr ReasonersRule,
         trans: &Translator<T>,
-        name_generator: &mut impl FnMut() -> T,
-    ) -> Result<Self, NoTranslation<'rr, u32>> {
-        unimplemented!()
+        name_generator: &mut impl FnMut() -> String,
+    ) -> Result<Self, NoTranslation<'rr, u32>>
+    where
+        T: Clone,
+    {
+        let uniq_local_names: BTreeSet<u32> = iter_local_reasoner_entities(&rr.if_all).collect();
+        let local_to_human: BTreeMap<u32, Entity<T>> = uniq_local_names
+            .iter()
+            .map(
+                |local_name| -> Result<(u32, Entity<T>), NoTranslation<'rr, u32>> {
+                    let ent: Entity<T> = match rr.inst.as_ref().get(&local_name) {
+                        Some(global_name) => Entity::Exactly(
+                            trans
+                                .back(*global_name)
+                                .ok_or_else(|| NoTranslation(global_name))?
+                                .clone(),
+                        ),
+                        None => Entity::Any(name_generator()),
+                    };
+                    Ok((*local_name, ent))
+                },
+            )
+            .collect::<Result<_, _>>()?;
+        let to_human = |triple: &reasoner::Triple| -> Restriction<T> {
+            Restriction::<T> {
+                subject: local_to_human[&triple.subject.0].clone(),
+                property: local_to_human[&triple.property.0].clone(),
+                object: local_to_human[&triple.object.0].clone(),
+            }
+        };
+        // this function will panic if the "unbound names" invariant is violated
+        Ok(Self::create(
+            rr.if_all.iter().map(to_human).collect(),
+            rr.then.iter().map(to_human).collect(),
+        )
+        .expect("Reasoner rule was invalid."))
     }
 }
 
@@ -129,10 +163,10 @@ pub enum InvalidRule {
     /// // conditional universal statement
     /// (<sun> <enabled> <false>) -> (?a <color> <black>)
     /// ```
-    UnboundImplied,
+    UnboundImplied(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 /// The rule contains terms that have no correspond entity in the translators target universe.
 pub struct NoTranslation<'a, T>(&'a T);
 
@@ -155,6 +189,14 @@ fn iter_entities<T>(res: &[Restriction<T>]) -> impl Iterator<Item = &Entity<T>> 
         once(&rule.subject)
             .chain(once(&rule.property))
             .chain(once(&rule.object))
+    })
+}
+
+fn iter_local_reasoner_entities<'a>(res: &'a [reasoner::Triple]) -> impl Iterator<Item = u32> + 'a {
+    res.iter().flat_map(|trip| {
+        once(trip.subject.0)
+            .chain(once(trip.property.0))
+            .chain(once(trip.object.0))
     })
 }
 
@@ -323,6 +365,35 @@ mod test {
     }
 
     #[test]
+    fn to_reasoners_rule_no_translation() {
+        let trans = Translator::<&str>::from_iter(vec![]);
+
+        let r = Rule::<&str>::create(
+            vec![Restriction {
+                subject: Entity::Any("a".into()),
+                property: Entity::Exactly("unknown_entity"),
+                object: Entity::Any("b".into()),
+            }],
+            vec![],
+        )
+        .unwrap();
+        let err = r.to_reasoners_rule(&trans).unwrap_err();
+        assert_eq!(err, NoTranslation(&"unknown_entity"));
+
+        let r = Rule::<&str>::create(
+            vec![],
+            vec![Restriction {
+                subject: Entity::Exactly("unknown_entity"),
+                property: Entity::Exactly("unknown_entity"),
+                object: Entity::Exactly("unknown_entity"),
+            }],
+        )
+        .unwrap();
+        let err = r.to_reasoners_rule(&trans).unwrap_err();
+        assert_eq!(err, NoTranslation(&"unknown_entity"));
+    }
+
+    #[test]
     fn from_reasoners_rule() {
         let trans = Translator::<String>::from_iter(vec!["ancestor".into()]);
         let rr = ReasonersRule {
@@ -334,13 +405,77 @@ mod test {
             inst: MapStack::from_iter(vec![(6, 0)]),
         };
 
-        let mut human_names = 0..;
-        let rule = Rule::from_reasoners_rule(&rr, &trans, &mut || {
-            format!("a{}", human_names.next().unwrap())
-        })
-        .unwrap();
+        let mut human_names = (0..).map(|a| format!("a{}", a));
+        let mut next_name = || human_names.next().unwrap();
+        let rule = Rule::from_reasoners_rule(&rr, &trans, &mut next_name).unwrap();
+        assert_eq!(
+            rule,
+            Rule::<String> {
+                if_all: [
+                    Restriction {
+                        subject: Entity::Any("a0".into()),
+                        property: Entity::Exactly("ancestor".into()),
+                        object: Entity::Any("a1".into()),
+                    },
+                    Restriction {
+                        subject: Entity::Any("a1".into()),
+                        property: Entity::Exactly("ancestor".into()),
+                        object: Entity::Any("a2".into()),
+                    },
+                ]
+                .to_vec(),
+                then: [Restriction {
+                    subject: Entity::Any("a0".into()),
+                    property: Entity::Exactly("ancestor".into()),
+                    object: Entity::Any("a2".into()),
+                }]
+                .to_vec(),
+            }
+        );
     }
 
     #[test]
-    fn to_from_reasoners_rule() {}
+    fn to_from_reasoners_rule() {
+        let trans = Translator::<String>::from_iter(vec!["ancestor".into()]);
+        let original = Rule::<String> {
+            if_all: [
+                Restriction {
+                    subject: Entity::Any("a0".into()),
+                    property: Entity::Exactly("ancestor".into()),
+                    object: Entity::Any("a1".into()),
+                },
+                Restriction {
+                    subject: Entity::Any("a1".into()),
+                    property: Entity::Exactly("ancestor".into()),
+                    object: Entity::Any("a2".into()),
+                },
+            ]
+            .to_vec(),
+            then: [Restriction {
+                subject: Entity::Any("a0".into()),
+                property: Entity::Exactly("ancestor".into()),
+                object: Entity::Any("a2".into()),
+            }]
+            .to_vec(),
+        };
+        let rr = original.to_reasoners_rule(&trans).unwrap();
+        let mut human_names = (0..).map(|a| format!("a{}", a));
+        let mut next_name = || human_names.next().unwrap();
+        let end = Rule::from_reasoners_rule(&rr, &trans, &mut next_name).unwrap();
+        assert_eq!(original, end);
+    }
+
+    #[test]
+    fn create_invalid() {
+        Rule::<usize>::create(
+            [].to_vec(),
+            [Restriction {
+                subject: Entity::Any("a".into()),
+                property: Entity::Any("a".into()),
+                object: Entity::Any("a".into()),
+            }]
+            .to_vec(),
+        )
+        .unwrap_err();
+    }
 }
