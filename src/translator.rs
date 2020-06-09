@@ -11,6 +11,7 @@ use core::convert::TryInto;
 use core::iter::FromIterator;
 
 /// bijective mapping from some type T to u32
+#[derive(Debug)]
 pub struct Translator<T> {
     /// represents both u32 -> T and T -> u32
     widdershins: Box<[T]>,

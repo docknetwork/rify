@@ -4,19 +4,19 @@ use core::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub struct Triple {
-    subject: Subj,
-    property: Prop,
-    object: Obje,
+    pub subject: Subj,
+    pub property: Prop,
+    pub object: Obje,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Subj(u32);
+pub struct Subj(pub u32);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Prop(u32);
+pub struct Prop(pub u32);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Obje(u32);
+pub struct Obje(pub u32);
 
 impl Triple {
     pub fn from_tuple(subject: u32, property: u32, object: u32) -> Self {
@@ -202,7 +202,7 @@ mod tests {
     use alloc::collections::BTreeMap;
 
     #[test]
-    fn ancestry() {
+    fn ancestry_raw() {
         // increment argument and return it's initial value
         fn inc(a: &mut u32) -> u32 {
             *a += 1;
