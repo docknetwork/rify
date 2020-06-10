@@ -150,6 +150,13 @@ impl<T: Ord> Rule<T> {
         )
         .expect("Reasoner rule was invalid."))
     }
+
+    /// Return and iterator over all concrete entity names in this rule.
+    pub fn all_bound_entities(&self) -> impl Iterator<Item = &T> {
+        iter_entities(&self.if_all)
+            .chain(iter_entities(&self.then))
+            .filter_map(as_bound)
+    }
 }
 
 #[derive(Debug)]

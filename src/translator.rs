@@ -36,6 +36,8 @@ impl<T: Ord> Translator<T> {
     }
 }
 
+// TODO: The user of this impl probably won't expect an implementaion of FromIterator to panic
+//       This impl panics if there are too many elements to index with a u32.
 impl<T: Ord> FromIterator<T> for Translator<T> {
     fn from_iter<I: IntoIterator<Item = T>>(src: I) -> Self {
         let mut table: Vec<T> = src.into_iter().collect();
