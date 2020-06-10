@@ -49,3 +49,23 @@ impl<T> VecSet<T> {
         self.sorted.as_slice()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn vecset() {
+        let ordering = |a: &u8, b: &u8| -> Ordering { a.cmp(&b) };
+        let sub_ordering = |a: &u8, b: &u8| -> Ordering { (a / 2).cmp(&(b / 2)) };
+        let mut vs: VecSet<u8> = VecSet::new();
+        for n in &[32u8, 5, 2, 2, 4, 3, 2, 23, 24, 253] {
+            vs.insert(*n, ordering);
+        }
+        assert_eq!(vs.as_slice(), [2, 3, 4, 5, 23, 24, 32, 253]);
+        assert_eq!(vs.range(|a| ordering(a, &4)), [4]);
+        assert_eq!(vs.range(|a| sub_ordering(a, &4)), [4, 5]);
+        assert_eq!(vs.range(|a| sub_ordering(a, &2)), [2, 3]);
+        assert_eq!(vs.range(|a| sub_ordering(a, &3)), [2, 3]);
+    }
+}

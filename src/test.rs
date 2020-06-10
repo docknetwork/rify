@@ -9,7 +9,7 @@ fn ancestry() {
     // load data
     let parent = "parent";
     let ancestor = "ancestor";
-    let nodes: Vec<_> = (0..2).map(|a| format!("n{}", a)).collect();
+    let nodes: Vec<_> = (0..10).map(|a| format!("n{}", a)).collect();
 
     // create a translator to map human readable names to u32
     let tran: Translator<&str> = nodes

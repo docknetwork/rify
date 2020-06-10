@@ -159,7 +159,7 @@ impl TripleStore {
         let pattern: (Option<Subj>, Option<Prop>, Option<Obje>) = (
             inst.get(&pattern.subject.0).cloned().map(Subj),
             inst.get(&pattern.property.0).cloned().map(Prop),
-            inst.get(&pattern.subject.0).cloned().map(Obje),
+            inst.get(&pattern.object.0).cloned().map(Obje),
         );
         match pattern {
             (Some(subject), Some(property), Some(object)) => self.spo.range(|b| {
@@ -314,5 +314,14 @@ mod tests {
         results.sort();
         expected_intantiations.sort();
         assert_eq!(results, expected_intantiations);
+    }
+
+    #[test]
+    fn swap_behaviour() {
+        let a = &mut [1, 2, 3];
+        a.swap(0, 1);
+        assert_eq!(a, &[2, 1, 3]);
+        a.swap(0, 0);
+        assert_eq!(a, &[2, 1, 3]);
     }
 }
