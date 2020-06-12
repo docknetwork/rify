@@ -5,7 +5,7 @@ use core::iter::FromIterator;
 
 /// A mapping that keeps a history of writes. Writes to the map effect "pushes" to a stack. Those
 /// "pushes" can be undone with a "pop".
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapStack<K, V> {
     current: BTreeMap<K, V>,
     history: Vec<(K, Option<V>)>,

@@ -1,5 +1,6 @@
+use crate::common::{any, exa};
 use crate::reasoner::{Triple, TripleStore};
-use crate::rule::{Entity, ReasonersRule, Restriction, Rule};
+use crate::rule::{Entity, ReasonersRule, Rule};
 use crate::translator::Translator;
 use alloc::collections::BTreeSet;
 use core::iter::once;
@@ -20,17 +21,17 @@ fn ancestry() {
         .collect();
 
     // load rules
-    let rules: &[[&[[Entity<&str>; 3]]; 2]] = &[
+    let rules: &[[&[[Entity<&str, &str>; 3]]; 2]] = &[
         [
-            &[[any("a"), exactly(&parent), any("b")]],
-            &[[any("a"), exactly(&ancestor), any("b")]],
+            &[[any("a"), exa(&parent), any("b")]],
+            &[[any("a"), exa(&ancestor), any("b")]],
         ],
         [
             &[
-                [any("a"), exactly(&ancestor), any("b")],
-                [any("b"), exactly(&ancestor), any("c")],
+                [any("a"), exa(&ancestor), any("b")],
+                [any("b"), exa(&ancestor), any("c")],
             ],
-            &[[any("a"), exactly(&ancestor), any("c")]],
+            &[[any("a"), exa(&ancestor), any("c")]],
         ],
     ];
     let mut rrs: Vec<ReasonersRule> = rules
@@ -111,30 +112,10 @@ fn ancestry() {
 
 /// panics if an unbound name is implied
 /// pancis if rule contains bound names that are not present in Translator
-fn reasoner_rule(rule: [&[[Entity<&str>; 3]]; 2], trans: &Translator<&str>) -> ReasonersRule {
+fn reasoner_rule(rule: [&[[Entity<&str, &str>; 3]]; 2], trans: &Translator<&str>) -> ReasonersRule {
     let [if_all, then] = rule;
-    Rule::<&str>::create(
-        if_all.iter().map(restriction).collect(),
-        then.iter().map(restriction).collect(),
-    )
-    .unwrap()
-    .to_reasoners_rule(trans)
-    .unwrap()
-}
-
-fn restriction<'a>(res: &'a [Entity<&str>; 3]) -> Restriction<&'a str> {
-    let [subject, property, object] = res.clone();
-    Restriction {
-        subject,
-        property,
-        object,
-    }
-}
-
-fn any(a: &str) -> Entity<&str> {
-    Entity::Any(a.to_string())
-}
-
-fn exactly(a: &str) -> Entity<&str> {
-    Entity::Exactly(a)
+    Rule::<&str, &str>::create(if_all, then)
+        .unwrap()
+        .to_reasoners_rule(trans)
+        .unwrap()
 }
