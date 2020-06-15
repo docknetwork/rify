@@ -1,6 +1,6 @@
 use crate::common::{any, exa};
 use crate::reasoner::{Triple, TripleStore};
-use crate::rule::{Entity, ReasonersRule, Rule};
+use crate::rule::{Entity, LowRule, Rule};
 use crate::translator::Translator;
 use alloc::collections::BTreeSet;
 use core::iter::once;
@@ -34,7 +34,7 @@ fn ancestry() {
             &[[any("a"), exa(&ancestor), any("c")]],
         ],
     ];
-    let mut rrs: Vec<ReasonersRule> = rules
+    let mut rrs: Vec<LowRule> = rules
         .iter()
         .map(|rule| reasoner_rule(*rule, &tran))
         .collect();
@@ -112,10 +112,10 @@ fn ancestry() {
 
 /// panics if an unbound name is implied
 /// pancis if rule contains bound names that are not present in Translator
-fn reasoner_rule(rule: [&[[Entity<&str, &str>; 3]]; 2], trans: &Translator<&str>) -> ReasonersRule {
+fn reasoner_rule(rule: [&[[Entity<&str, &str>; 3]]; 2], trans: &Translator<&str>) -> LowRule {
     let [if_all, then] = rule;
     Rule::<&str, &str>::create(if_all, then)
         .unwrap()
-        .to_reasoners_rule(trans)
+        .lower(trans)
         .unwrap()
 }

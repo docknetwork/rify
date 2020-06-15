@@ -6,13 +6,14 @@ use crate::common::inc;
 use crate::reasoner::{self, Triple};
 use crate::translator::Translator;
 use alloc::collections::BTreeMap;
+use alloc::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
 //
 // TODO: find a way to make fields non-public to protect invariant
-pub struct ReasonersRule {
+pub struct LowRule {
     pub if_all: Vec<Triple>,            // contains locally scoped names
     pub then: Vec<Triple>,              // contains locally scoped names
     pub inst: reasoner::Instantiations, // partially maps the local scope to some global scope
@@ -65,29 +66,60 @@ impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
         Ok(Self { if_all, then })
     }
 
-    pub fn to_reasoners_rule(
-        &self,
-        tran: &Translator<Bound>,
-    ) -> Result<ReasonersRule, NoTranslation<&Bound>> {
+    pub fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
         // There are three types of name at play here.
         // - human names are represented as Entities
         // - local names are local to the rule we are creating. they are represented as u32
         // - global names are from the translator. they are represented as u32
 
         // assign local names to each human name
+        // local names will be in a continous range from 0.
+        // smaller local names will represent unbound entities, larger ones will represent bound
         let mut next_local = 0u32;
-        let unbound_map: BTreeMap<&Unbound, u32> = self
+        let unbound_map = {
+            let mut unbound_map: BTreeMap<&Unbound, u32> = BTreeMap::new();
+            for unbound in self.if_all.iter().flatten().filter_map(Entity::as_unbound) {
+                unbound_map
+                    .entry(&unbound)
+                    .or_insert_with(|| inc(&mut next_local));
+            }
+            unbound_map
+        };
+        let bound_map = {
+            let mut bound_map: BTreeMap<&Bound, u32> = BTreeMap::new();
+            for bound in self.iter_entities().filter_map(Entity::as_bound) {
+                bound_map
+                    .entry(&bound)
+                    .or_insert_with(|| inc(&mut next_local));
+            }
+            bound_map
+        };
+        debug_assert!(
+            bound_map.values().all(|bound_local| unbound_map
+                .values()
+                .all(|unbound_local| bound_local > unbound_local)),
+            "unbound names are smaller than bound names"
+        );
+        debug_assert_eq!(
+            (0..next_local).collect::<BTreeSet<u32>>(),
+            unbound_map
+                .values()
+                .chain(bound_map.values())
+                .cloned()
+                .collect(),
+            "no names slots are wasted"
+        );
+        debug_assert_eq!(
+            next_local as usize,
+            unbound_map.values().chain(bound_map.values()).count(),
+            "no duplicate assignments"
+        );
+        debug_assert!(self
             .if_all
             .iter()
             .flatten()
             .filter_map(Entity::as_unbound)
-            .map(|s| (s, inc(&mut next_local)))
-            .collect();
-        let bound_map: BTreeMap<&Bound, u32> = self
-            .iter_entities()
-            .filter_map(Entity::as_bound)
-            .map(|s| (s, inc(&mut next_local)))
-            .collect();
+            .all(|unbound_then| { unbound_map.contains_key(&unbound_then) }));
 
         // gets the local name for a human_name
         let local_name = |entity: &Entity<Unbound, Bound>| -> u32 {
@@ -104,7 +136,7 @@ impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
                 .collect()
         };
 
-        Ok(ReasonersRule {
+        Ok(LowRule {
             if_all: to_requirements(&self.if_all),
             then: to_requirements(&self.then),
             inst: bound_map
@@ -116,7 +148,28 @@ impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
                 .collect::<Result<_, _>>()?,
         })
     }
+}
 
+impl<'a, Unbound: Ord, Bound> Rule<'a, Unbound, Bound> {
+    /// List the unique unbound names in this rule in order of appearance.
+    pub fn cononical_unbound(&self) -> impl Iterator<Item = &Unbound> {
+        let mut listed = BTreeSet::<&Unbound>::new();
+        self.if_all
+            .iter()
+            .flatten()
+            .filter_map(Entity::as_unbound)
+            .filter_map(move |unbound| {
+                if listed.contains(unbound) {
+                    None
+                } else {
+                    listed.insert(unbound);
+                    Some(unbound)
+                }
+            })
+    }
+}
+
+impl<'a, Unbound, Bound> Rule<'a, Unbound, Bound> {
     pub fn iter_entities(&self) -> impl Iterator<Item = &Entity<Unbound, Bound>> {
         self.if_all.iter().chain(self.then).flatten()
     }
@@ -160,14 +213,14 @@ mod test {
             then: &[],
         };
         let trans: Translator<&str> = ["a"].iter().cloned().collect();
-        let rr = rule.to_reasoners_rule(&trans).unwrap();
+        let rr = rule.lower(&trans).unwrap();
 
         // ?a != <a>
         assert_ne!(rr.if_all[0].subject.0, rr.if_all[0].property.0);
     }
 
     #[test]
-    fn to_reasoners_rule() {
+    fn lower() {
         // rules: (?a parent ?b) -> (?a ancestor ?b)
         //        (?a ancestor ?b) and (?b ancestor ?c) -> (?a ancestor ?c)
 
@@ -179,7 +232,7 @@ mod test {
                 then: &[[any(0xa), exa("ancestor"), any(0xb)]],
             };
 
-            let re_rulea = rulea.to_reasoners_rule(&trans).unwrap();
+            let re_rulea = rulea.lower(&trans).unwrap();
             let keys = [
                 re_rulea.if_all[0].subject.0,
                 re_rulea.if_all[0].property.0,
@@ -226,7 +279,7 @@ mod test {
                 then: &[[any("a"), exa("ancestor"), any("c")]],
             };
 
-            let re_ruleb = ruleb.to_reasoners_rule(&trans).unwrap();
+            let re_ruleb = ruleb.lower(&trans).unwrap();
             let keys = [
                 re_ruleb.if_all[0].subject.0,
                 re_ruleb.if_all[0].property.0,
@@ -278,7 +331,7 @@ mod test {
     }
 
     #[test]
-    fn to_reasoners_rule_no_translation_err() {
+    fn lower_no_translation_err() {
         let trans = Translator::<&str>::from_iter(vec![]);
 
         let r = Rule::<&str, &str>::create(
@@ -290,7 +343,7 @@ mod test {
             &[],
         )
         .unwrap();
-        let err = r.to_reasoners_rule(&trans).unwrap_err();
+        let err = r.lower(&trans).unwrap_err();
         assert_eq!(err, NoTranslation(&"unknown"));
 
         let r = Rule::<&str, &str>::create(
@@ -302,7 +355,7 @@ mod test {
             ]],
         )
         .unwrap();
-        let err = r.to_reasoners_rule(&trans).unwrap_err();
+        let err = r.lower(&trans).unwrap_err();
         assert_eq!(err, NoTranslation(&"unknown"));
     }
 
