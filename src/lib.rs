@@ -2,7 +2,6 @@ extern crate alloc;
 extern crate core;
 
 mod common;
-mod lower;
 pub mod mapstack;
 pub mod reasoner;
 pub mod rule;
