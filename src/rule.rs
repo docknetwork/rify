@@ -7,13 +7,15 @@ use crate::reasoner::{self, Triple};
 use crate::translator::Translator;
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
+use core::fmt::Debug;
+use core::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
 //
 // TODO: find a way to make fields non-public to protect invariant
-pub struct LowRule {
+pub(crate) struct LowRule {
     pub if_all: Vec<Triple>,            // contains locally scoped names
     pub then: Vec<Triple>,              // contains locally scoped names
     pub inst: reasoner::Instantiations, // partially maps the local scope to some global scope
@@ -66,7 +68,7 @@ impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
         Ok(Self { if_all, then })
     }
 
-    pub fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
+    pub(crate) fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
         // There are three types of name at play here.
         // - human names are represented as Entities
         // - local names are local to the rule we are creating. they are represented as u32
@@ -191,6 +193,15 @@ pub enum InvalidRule<Unbound> {
     /// ```
     UnboundImplied(Unbound),
 }
+
+impl<Unbound: Debug> Display for InvalidRule<Unbound> {
+    fn fmt(&self, fmtr: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        Debug::fmt(self, fmtr)
+    }
+}
+
+#[cfg(feature = "std")]
+impl<Unbound> std::error::Error for InvalidRule<Unbound> where InvalidRule<Unbound>: Debug + Display {}
 
 #[derive(Debug, Eq, PartialEq)]
 /// The rule contains terms that have no corresponding entity in the translators target universe.
