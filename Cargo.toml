@@ -3,10 +3,16 @@ name = "rify"
 version = "0.1.0"
 authors = ["Andrew Dirksen <andrew@dirksen.com>"]
 edition = "2018"
-description = "unfinishe sketch of an RDF reasoner that operates on RIF-like conjunctive rules"
+description = "unfinished sketch of an RDF reasoner that operates on RIF-like conjunctive rules"
+
+[lib]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
+wasm-bindgen = { version = "0.2", optional = true, features = ["serde-serialize"] }
+serde = { version = "1", optional = true, features = ["derive"] }
 
 [features]
 default = ["std"]
+js-library-wasm = ["wasm-bindgen", "serde"]
 std = []

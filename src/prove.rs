@@ -17,11 +17,11 @@ use core::fmt::{Debug, Display};
 ///
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = Rule::create(
-///     &[
+///     vec![
 ///         [Any("a"), Exactly("is"), Exactly("awesome")], // if someone is awesome
 ///         [Any("a"), Exactly("score"), Any("s")],    // and they have some score
 ///     ],
-///     &[[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
+///     vec![[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
 /// )?;
 ///
 /// assert_eq!(
@@ -30,7 +30,7 @@ use core::fmt::{Debug, Display};
 ///         &[["you", "score", "awesome"]],
 ///         &[awesome_score_axiom]
 ///     )?,
-///     vec![
+///     &[
 ///         // (you is awesome) ∧ (you score unspecified) -> (you score awesome)
 ///         RuleApplication {
 ///             rule_index: 0,
@@ -44,7 +44,7 @@ use core::fmt::{Debug, Display};
 pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
     premises: &'a [[Bound; 3]],
     to_prove: &'a [[Bound; 3]],
-    rules: &'a [Rule<'a, Unbound, Bound>],
+    rules: &'a [Rule<Unbound, Bound>],
 ) -> Result<Vec<RuleApplication<Bound>>, CantProve> {
     let tran: Translator<Bound> = rules
         .iter()
@@ -68,9 +68,7 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
     let lrules: Vec<LowRule> = rules
         .iter()
         .cloned()
-        .map(|rule: Rule<'a, Unbound, Bound>| -> LowRule {
-            rule.lower(&tran).map_err(|_| ()).unwrap()
-        })
+        .map(|rule: Rule<Unbound, Bound>| -> LowRule { rule.lower(&tran).map_err(|_| ()).unwrap() })
         .collect();
 
     let lproof = low_prove(&lpremises, &lto_prove, &lrules)?;
@@ -218,9 +216,9 @@ impl LowRuleApplication {
     ///   - an unbound item from originial_rule is not instatiated by self
     ///   - or there is no translation for a global instatiation of one of the unbound entities in
     ///     original_rule.
-    fn raise<'a, Unbound: Ord, Bound: Ord + Clone>(
+    fn raise<Unbound: Ord, Bound: Ord + Clone>(
         &self,
-        original_rule: &Rule<'a, Unbound, Bound>,
+        original_rule: &Rule<Unbound, Bound>,
         trans: &Translator<Bound>,
     ) -> RuleApplication<Bound> {
         let mut instantiations = Vec::new();
@@ -291,10 +289,10 @@ mod test {
             ],
             &[["andrew", "score", "awesome"]],
             &[
-                Rule::create(&[], &[]).unwrap(),
+                Rule::create(vec![], vec![]).unwrap(),
                 Rule::create(
-                    &[[Any("a"), Exa("ability"), Exa("backflip")]],
-                    &[[Any("a"), Exa("score"), Exa("awesome")]],
+                    vec![[Any("a"), Exa("ability"), Exa("backflip")]],
+                    vec![[Any("a"), Exa("score"), Exa("awesome")]],
                 )
                 .unwrap(),
             ],
@@ -321,11 +319,11 @@ mod test {
     fn prove_single_step() {
         // (?boi, is, awesome) ∧ (?boi, score, ?s) -> (?boi score, awesome)
         let awesome_score_axiom = Rule::create(
-            &[
+            vec![
                 [Any("boi"), Exa("is"), Exa("awesome")], // if someone is awesome
                 [Any("boi"), Exa("score"), Any("s")],    // and they have some score
             ],
-            &[[Any("boi"), Exa("score"), Exa("awesome")]], // then they must have an awesome score
+            vec![[Any("boi"), Exa("score"), Exa("awesome")]], // then they must have an awesome score
         )
         .unwrap();
         assert_eq!(
@@ -391,7 +389,7 @@ mod test {
                 ],
             ];
             ru.iter()
-                .map(|[ifa, then]| Rule::create(ifa, then).unwrap())
+                .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
                 .collect()
         };
         let facts: &[[&str; 3]] = &[
@@ -429,7 +427,7 @@ mod test {
                 .collect()
         };
 
-        let proof = prove(facts, composite_claims, &rules).unwrap();
+        let proof = prove::<&str, &str>(facts, composite_claims, &rules).unwrap();
         assert_eq!(proof, expected_proof);
     }
 
@@ -462,14 +460,14 @@ mod test {
             [*nodes.last().unwrap(), ancestor, *nodes.first().unwrap()],
             [*nodes.first().unwrap(), ancestor, *nodes.first().unwrap()],
         ];
-        prove(&facts, &composite_claims, &decl_rules(rules)).unwrap();
+        prove::<&str, u32>(&facts, &composite_claims, &decl_rules(rules)).unwrap();
     }
 
-    fn decl_rules<'a, Unbound: Ord + Debug, Bound: Ord>(
-        rs: &'a [[&[[Entity<Unbound, Bound>; 3]]; 2]],
-    ) -> Vec<Rule<'a, Unbound, Bound>> {
+    fn decl_rules<Unbound: Ord + Debug + Clone, Bound: Ord + Clone>(
+        rs: &[[&[[Entity<Unbound, Bound>; 3]]; 2]],
+    ) -> Vec<Rule<Unbound, Bound>> {
         rs.iter()
-            .map(|[ifa, then]| Rule::create(ifa, then).unwrap())
+            .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
             .collect()
     }
 }

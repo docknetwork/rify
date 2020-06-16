@@ -46,22 +46,22 @@ impl<Unbound, Bound> Entity<Unbound, Bound> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
-pub struct Rule<'a, Unbound, Bound> {
-    if_all: &'a [[Entity<Unbound, Bound>; 3]],
-    then: &'a [[Entity<Unbound, Bound>; 3]],
+pub struct Rule<Unbound, Bound> {
+    if_all: Vec<[Entity<Unbound, Bound>; 3]>,
+    then: Vec<[Entity<Unbound, Bound>; 3]>,
 }
 
-impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
+impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
     pub fn create(
-        if_all: &'a [[Entity<Unbound, Bound>; 3]],
-        then: &'a [[Entity<Unbound, Bound>; 3]],
-    ) -> Result<Self, InvalidRule<&'a Unbound>> {
+        if_all: Vec<[Entity<Unbound, Bound>; 3]>,
+        then: Vec<[Entity<Unbound, Bound>; 3]>,
+    ) -> Result<Self, InvalidRule<Unbound>> {
         let unbound_if = if_all.iter().flatten().filter_map(Entity::as_unbound);
         let unbound_then = then.iter().flatten().filter_map(Entity::as_unbound);
 
         for th in unbound_then.clone() {
             if !unbound_if.clone().any(|ifa| ifa == th) {
-                return Err(InvalidRule::UnboundImplied(th));
+                return Err(InvalidRule::UnboundImplied(th.clone()));
             }
         }
 
@@ -152,7 +152,7 @@ impl<'a, Unbound: Ord, Bound: Ord> Rule<'a, Unbound, Bound> {
     }
 }
 
-impl<'a, Unbound: Ord, Bound> Rule<'a, Unbound, Bound> {
+impl<'a, Unbound: Ord, Bound> Rule<Unbound, Bound> {
     /// List the unique unbound names in this rule in order of appearance.
     pub fn cononical_unbound(&self) -> impl Iterator<Item = &Unbound> {
         let mut listed = BTreeSet::<&Unbound>::new();
@@ -171,9 +171,9 @@ impl<'a, Unbound: Ord, Bound> Rule<'a, Unbound, Bound> {
     }
 }
 
-impl<'a, Unbound, Bound> Rule<'a, Unbound, Bound> {
+impl<'a, Unbound, Bound> Rule<Unbound, Bound> {
     pub fn iter_entities(&self) -> impl Iterator<Item = &Entity<Unbound, Bound>> {
-        self.if_all.iter().chain(self.then).flatten()
+        self.if_all.iter().chain(self.then.iter()).flatten()
     }
 }
 
@@ -220,8 +220,8 @@ mod test {
         // ?a should be a separate entity from <a>
 
         let rule = Rule::<&str, &str> {
-            if_all: &[[any("a"), exa("a"), any("b")]],
-            then: &[],
+            if_all: vec![[any("a"), exa("a"), any("b")]],
+            then: vec![],
         };
         let trans: Translator<&str> = ["a"].iter().cloned().collect();
         let rr = rule.lower(&trans).unwrap();
@@ -239,8 +239,8 @@ mod test {
 
         {
             let rulea = Rule::<u16, &str> {
-                if_all: &[[any(0xa), exa("parent"), any(0xb)]],
-                then: &[[any(0xa), exa("ancestor"), any(0xb)]],
+                if_all: vec![[any(0xa), exa("parent"), any(0xb)]],
+                then: vec![[any(0xa), exa("ancestor"), any(0xb)]],
             };
 
             let re_rulea = rulea.lower(&trans).unwrap();
@@ -283,11 +283,11 @@ mod test {
 
         {
             let ruleb = Rule::<&str, &str> {
-                if_all: &[
+                if_all: vec![
                     [any("a"), exa("ancestor"), any("b")],
                     [any("b"), exa("ancestor"), any("c")],
                 ],
-                then: &[[any("a"), exa("ancestor"), any("c")]],
+                then: vec![[any("a"), exa("ancestor"), any("c")]],
             };
 
             let re_ruleb = ruleb.lower(&trans).unwrap();
@@ -346,20 +346,20 @@ mod test {
         let trans = Translator::<&str>::from_iter(vec![]);
 
         let r = Rule::<&str, &str>::create(
-            &[[
+            vec![[
                 Entity::Any("a"),
                 Entity::Exactly("unknown"),
                 Entity::Any("b"),
             ]],
-            &[],
+            vec![],
         )
         .unwrap();
         let err = r.lower(&trans).unwrap_err();
         assert_eq!(err, NoTranslation(&"unknown"));
 
         let r = Rule::<&str, &str>::create(
-            &[],
-            &[[
+            vec![],
+            vec![[
                 Entity::Exactly("unknown"),
                 Entity::Exactly("unknown"),
                 Entity::Exactly("unknown"),
@@ -372,6 +372,6 @@ mod test {
 
     #[test]
     fn create_invalid() {
-        Rule::<&str, &str>::create(&[], &[[any("a"), any("a"), any("a")]]).unwrap_err();
+        Rule::<&str, &str>::create(vec![], vec![[any("a"), any("a"), any("a")]]).unwrap_err();
     }
 }

@@ -430,7 +430,7 @@ mod tests {
     /// pancis if rule contains bound names that are not present in Translator
     fn low_rule(rule: [&[[Entity<&str, &str>; 3]]; 2], trans: &Translator<&str>) -> LowRule {
         let [if_all, then] = rule;
-        Rule::<&str, &str>::create(if_all, then)
+        Rule::<&str, &str>::create(if_all.to_vec(), then.to_vec())
             .unwrap()
             .lower(trans)
             .unwrap()
