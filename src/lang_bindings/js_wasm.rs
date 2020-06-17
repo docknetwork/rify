@@ -1,6 +1,6 @@
 extern crate wasm_bindgen;
 
-use crate::Rule;
+use crate::{Claim, Rule};
 use wasm_bindgen::prelude::*;
 
 /// TODO: don't panic
@@ -77,4 +77,10 @@ impl From<crate::RuleApplication<String>> for RuleApplication {
             instantiations,
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> JsValue {
+    let _ = (rules, proof);
+    unimplemented!()
 }
