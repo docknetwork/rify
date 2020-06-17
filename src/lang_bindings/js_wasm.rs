@@ -3,7 +3,12 @@ extern crate wasm_bindgen;
 use crate::{Claim, Rule};
 use wasm_bindgen::prelude::*;
 
-/// TODO: don't panic
+/// This function work but it will panic with unhelpful error messages unles you get the types just
+/// right.
+///
+/// Helpful error messages are a TODO.
+///
+/// This function needs docs, js type annotations, and a js example. TODO
 #[wasm_bindgen]
 pub fn prove(
     premises: Box<[JsValue]>,
@@ -79,6 +84,7 @@ impl From<crate::RuleApplication<String>> for RuleApplication {
     }
 }
 
+/// This function is just a stub right now. It will panic immediately if you call it. TODO
 #[wasm_bindgen]
 pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> JsValue {
     let _ = (rules, proof);
