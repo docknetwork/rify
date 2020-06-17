@@ -15,13 +15,20 @@ pub fn inc(a: &mut u32) -> u32 {
 }
 
 #[cfg(test)]
-/// shorthand for Entity::Any
-pub fn any<Unbound, Bound>(a: Unbound) -> crate::rule::Entity<Unbound, Bound> {
-    crate::rule::Entity::Any(a)
-}
+mod test_util {
+    use crate::rule::Entity;
+    pub use crate::rule::Entity::{Any, Exactly as Exa};
+    use crate::rule::Rule;
+    use crate::Claim;
+    use core::fmt::Debug;
 
-#[cfg(test)]
-/// shorthand for Entity::Exactly
-pub fn exa<Unbound, Bound>(a: Bound) -> crate::rule::Entity<Unbound, Bound> {
-    crate::rule::Entity::Exactly(a)
+    pub fn decl_rules<Unbound: Ord + Debug + Clone, Bound: Ord + Clone>(
+        rs: &[[&[Claim<Entity<Unbound, Bound>>]; 2]],
+    ) -> Vec<Rule<Unbound, Bound>> {
+        rs.iter()
+            .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
+            .collect()
+    }
 }
+#[cfg(test)]
+pub use test_util::*;

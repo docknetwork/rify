@@ -1,6 +1,7 @@
 use crate::reasoner::{Triple, TripleStore};
 use crate::rule::{Entity, LowRule, Rule};
 use crate::translator::Translator;
+use crate::Claim;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::convert::TryInto;
 use core::fmt::{Debug, Display};
@@ -42,8 +43,8 @@ use core::fmt::{Debug, Display};
 /// # }
 /// ```
 pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
-    premises: &'a [[Bound; 3]],
-    to_prove: &'a [[Bound; 3]],
+    premises: &'a [Claim<Bound>],
+    to_prove: &'a [Claim<Bound>],
     rules: &'a [Rule<Unbound, Bound>],
 ) -> Result<Vec<RuleApplication<Bound>>, CantProve> {
     let tran: Translator<Bound> = rules
@@ -52,7 +53,7 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
         .chain(premises.iter().flatten())
         .cloned()
         .collect();
-    let as_raw = |[s, p, o]: &[Bound; 3]| -> Option<Triple> {
+    let as_raw = |[s, p, o]: &Claim<Bound>| -> Option<Triple> {
         Some(Triple::from_tuple(
             tran.forward(&s)?,
             tran.forward(&p)?,
@@ -252,11 +253,84 @@ pub struct RuleApplication<Bound> {
     pub instantiations: Vec<Bound>,
 }
 
+impl<Bound: Clone> RuleApplication<Bound> {
+    pub(crate) fn assumptions_when_applied<'a, Unbound: Ord + Clone>(
+        &'a self,
+        rule: &'a Rule<Unbound, Bound>,
+    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+        self.bind_claims(rule, rule.if_all())
+    }
+
+    pub(crate) fn implications_when_applied<'a, Unbound: Ord + Clone>(
+        &'a self,
+        rule: &'a Rule<Unbound, Bound>,
+    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+        self.bind_claims(rule, rule.then())
+    }
+
+    /// claims must be either if_all or then from rule
+    fn bind_claims<'a, Unbound: Ord + Clone>(
+        &'a self,
+        rule: &'a Rule<Unbound, Bound>,
+        claims: &'a [Claim<Entity<Unbound, Bound>>],
+    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+        let cannon: BTreeMap<&Unbound, usize> = rule
+            .cononical_unbound()
+            .enumerate()
+            .map(|(ub, n)| (n, ub))
+            .collect();
+        if cannon.len() != self.instantiations.len() {
+            return Err(BadRuleApplication);
+        }
+        Ok(claims
+            .iter()
+            .cloned()
+            .map(move |claim| bind_claim(claim, &cannon, &self.instantiations)))
+    }
+}
+
+/// Panics
+///
+/// panics if an unbound entity is not registered in map
+/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+fn bind_claim<Unbound: Ord, Bound: Clone>(
+    [s, p, o]: Claim<Entity<Unbound, Bound>>,
+    map: &BTreeMap<&Unbound, usize>,
+    instanitations: &[Bound],
+) -> Claim<Bound> {
+    [
+        bind_entity(s, map, instanitations),
+        bind_entity(p, map, instanitations),
+        bind_entity(o, map, instanitations),
+    ]
+}
+
+/// Panics
+///
+/// panics if an unbound entity is not registered in map
+/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+fn bind_entity<Unbound: Ord, Bound: Clone>(
+    e: Entity<Unbound, Bound>,
+    map: &BTreeMap<&Unbound, usize>,
+    instanitations: &[Bound],
+) -> Bound {
+    match e {
+        Entity::Any(a) => instanitations[map[&a]].clone(),
+        Entity::Exactly(e) => e,
+    }
+}
+
+/// The Rule being applied expects a different number of name bindings.
+#[derive(Debug)]
+pub struct BadRuleApplication;
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::inc;
+    use crate::common::{decl_rules, inc};
     use crate::rule::Entity::{Any, Exactly as Exa};
+    use crate::validate::validate;
+    use crate::validate::Valid;
 
     #[test]
     fn novel_name() {
@@ -366,7 +440,7 @@ mod test {
         // (nick is awesome)
 
         let rules: Vec<Rule<&str, &str>> = {
-            let ru: &[[&[[Entity<&str, &str>; 3]]; 2]] = &[
+            let ru: &[[&[Claim<Entity<&str, &str>>]; 2]] = &[
                 [
                     &[
                         [Exa("andrew"), Exa("claims"), Any("c")],
@@ -392,7 +466,7 @@ mod test {
                 .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
                 .collect()
         };
-        let facts: &[[&str; 3]] = &[
+        let facts: &[Claim<&str>] = &[
             ["soyoung", "friendswith", "nick"],
             ["nick", "friendswith", "elina"],
             ["elina", "friendswith", "sam"],
@@ -403,7 +477,7 @@ mod test {
             ["_:claim1", "property", "is"],
             ["_:claim1", "object", "awesome"],
         ];
-        let composite_claims: &[[&str; 3]] =
+        let composite_claims: &[Claim<&str>] =
             &[["soyoung", "is", "awesome"], ["nick", "is", "awesome"]];
         let expected_proof: Vec<RuleApplication<&str>> = {
             let ep: &[(usize, &[&str])] = &[
@@ -426,23 +500,44 @@ mod test {
                 })
                 .collect()
         };
-
         let proof = prove::<&str, &str>(facts, composite_claims, &rules).unwrap();
-        assert_eq!(proof, expected_proof);
+        assert!(
+            proof.len() <= expected_proof.len(),
+            "if this assertion fails, the generated proof length is longer than it was previously"
+        );
+        assert_eq!(
+            proof, expected_proof,
+            "if this assertion fails the proof may still be valid but the order of the proof may \
+             have changed"
+        );
+        let Valid { assumed, implied } = validate(&rules, &proof).unwrap();
+        for claim in composite_claims {
+            assert!(implied.contains(claim));
+            assert!(
+                !facts.contains(claim),
+                "all theorems are expected to be composite for this particular problem"
+            );
+        }
+        for assumption in &assumed {
+            assert!(
+                assumed.contains(assumption),
+                "This problem was expected to use all porvided assumptions."
+            );
+        }
     }
 
     #[test]
-    fn ancestry_high() {
+    fn ancestry_high_prove_and_verify() {
         let mut next_uniq = 0u32;
         let parent = inc(&mut next_uniq);
         let ancestor = inc(&mut next_uniq);
         let nodes: Vec<u32> = (0usize..10).map(|_| inc(&mut next_uniq)).collect();
-        let facts: Vec<[u32; 3]> = nodes
+        let facts: Vec<Claim<u32>> = nodes
             .iter()
             .zip(nodes.iter().cycle().skip(1))
             .map(|(a, b)| [*a, parent, *b])
             .collect();
-        let rules: &[[&[[Entity<&str, u32>; 3]]; 2]] = &[
+        let rules = decl_rules(&[
             [
                 &[[Any("a"), Exa(parent), Any("b")]],
                 &[[Any("a"), Exa(ancestor), Any("b")]],
@@ -454,20 +549,45 @@ mod test {
                 ],
                 &[[Any("a"), Exa(ancestor), Any("c")]],
             ],
-        ];
+        ]);
         let composite_claims = vec![
-            [*nodes.first().unwrap(), ancestor, *nodes.last().unwrap()],
-            [*nodes.last().unwrap(), ancestor, *nodes.first().unwrap()],
-            [*nodes.first().unwrap(), ancestor, *nodes.first().unwrap()],
+            [nodes[0], ancestor, *nodes.last().unwrap()],
+            [*nodes.last().unwrap(), ancestor, nodes[0]],
+            [nodes[0], ancestor, nodes[0]],
+            [nodes[0], parent, nodes[1]], // (first node, parent,  second node) is a premise
         ];
-        prove::<&str, u32>(&facts, &composite_claims, &decl_rules(rules)).unwrap();
+        let proof = prove::<&str, u32>(&facts, &composite_claims, &rules).unwrap();
+        let Valid { assumed, implied } = validate(&rules, &proof).unwrap();
+        assert_eq!(
+            &assumed,
+            &facts.iter().cloned().collect(),
+            "all supplied premises are expected to be used for this proof"
+        );
+        assert!(!facts.contains(&composite_claims[0]));
+        assert!(!facts.contains(&composite_claims[1]));
+        assert!(!facts.contains(&composite_claims[2]));
+        assert!(facts.contains(&composite_claims[3]));
+        for claim in composite_claims {
+            assert!(implied.contains(&claim) ^ facts.contains(&claim));
+        }
+        for fact in facts {
+            assert!(!implied.contains(&fact));
+        }
     }
 
-    fn decl_rules<Unbound: Ord + Debug + Clone, Bound: Ord + Clone>(
-        rs: &[[&[[Entity<Unbound, Bound>; 3]]; 2]],
-    ) -> Vec<Rule<Unbound, Bound>> {
-        rs.iter()
-            .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
-            .collect()
+    #[test]
+    fn no_proof_is_generated_for_facts() {
+        let facts: Vec<Claim<&str>> = vec![
+            ["tacos", "are", "tasty"],
+            ["nachos", "are", "tasty"],
+            ["nachos", "are", "food"],
+        ];
+        let rules = decl_rules::<&str, &str>(&[[
+            &[[Exa("nachos"), Exa("are"), Exa("tasty")]],
+            &[[Exa("nachos"), Exa("are"), Exa("food")]],
+        ]]);
+        let composite_claims = vec![["nachos", "are", "food"]];
+        let proof = prove(&facts, &composite_claims, &rules).unwrap();
+        assert_eq!(&proof, &vec![]);
     }
 }

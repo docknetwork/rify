@@ -5,6 +5,7 @@
 use crate::common::inc;
 use crate::reasoner::{self, Triple};
 use crate::translator::Translator;
+use crate::Claim;
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use core::fmt::Debug;
@@ -47,14 +48,14 @@ impl<Unbound, Bound> Entity<Unbound, Bound> {
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
 pub struct Rule<Unbound, Bound> {
-    if_all: Vec<[Entity<Unbound, Bound>; 3]>,
-    then: Vec<[Entity<Unbound, Bound>; 3]>,
+    if_all: Vec<Claim<Entity<Unbound, Bound>>>,
+    then: Vec<Claim<Entity<Unbound, Bound>>>,
 }
 
 impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
     pub fn create(
-        if_all: Vec<[Entity<Unbound, Bound>; 3]>,
-        then: Vec<[Entity<Unbound, Bound>; 3]>,
+        if_all: Vec<Claim<Entity<Unbound, Bound>>>,
+        then: Vec<Claim<Entity<Unbound, Bound>>>,
     ) -> Result<Self, InvalidRule<Unbound>> {
         let unbound_if = if_all.iter().flatten().filter_map(Entity::as_unbound);
         let unbound_then = then.iter().flatten().filter_map(Entity::as_unbound);
@@ -132,7 +133,7 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
         };
         // converts a human readable restriction list to a list of locally scoped machine oriented
         // restrictions
-        let to_requirements = |hu: &[[Entity<Unbound, Bound>; 3]]| -> Vec<Triple> {
+        let to_requirements = |hu: &[Claim<Entity<Unbound, Bound>>]| -> Vec<Triple> {
             hu.iter()
                 .map(|[s, p, o]| Triple::from_tuple(local_name(&s), local_name(&p), local_name(&o)))
                 .collect()
@@ -154,7 +155,7 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
 
 impl<'a, Unbound: Ord, Bound> Rule<Unbound, Bound> {
     /// List the unique unbound names in this rule in order of appearance.
-    pub fn cononical_unbound(&self) -> impl Iterator<Item = &Unbound> {
+    pub(crate) fn cononical_unbound(&self) -> impl Iterator<Item = &Unbound> {
         let mut listed = BTreeSet::<&Unbound>::new();
         self.if_all
             .iter()
@@ -174,6 +175,14 @@ impl<'a, Unbound: Ord, Bound> Rule<Unbound, Bound> {
 impl<'a, Unbound, Bound> Rule<Unbound, Bound> {
     pub fn iter_entities(&self) -> impl Iterator<Item = &Entity<Unbound, Bound>> {
         self.if_all.iter().chain(self.then.iter()).flatten()
+    }
+
+    pub(crate) fn if_all(&self) -> &[Claim<Entity<Unbound, Bound>>] {
+        &self.if_all
+    }
+
+    pub(crate) fn then(&self) -> &[Claim<Entity<Unbound, Bound>>] {
+        &self.then
     }
 }
 
@@ -210,7 +219,7 @@ pub struct NoTranslation<T>(T);
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::{any, exa};
+    use crate::common::{Any, Exa};
     use core::iter::FromIterator;
 
     #[test]
@@ -220,7 +229,7 @@ mod test {
         // ?a should be a separate entity from <a>
 
         let rule = Rule::<&str, &str> {
-            if_all: vec![[any("a"), exa("a"), any("b")]],
+            if_all: vec![[Any("a"), Exa("a"), Any("b")]],
             then: vec![],
         };
         let trans: Translator<&str> = ["a"].iter().cloned().collect();
@@ -239,8 +248,8 @@ mod test {
 
         {
             let rulea = Rule::<u16, &str> {
-                if_all: vec![[any(0xa), exa("parent"), any(0xb)]],
-                then: vec![[any(0xa), exa("ancestor"), any(0xb)]],
+                if_all: vec![[Any(0xa), Exa("parent"), Any(0xb)]],
+                then: vec![[Any(0xa), Exa("ancestor"), Any(0xb)]],
             };
 
             let re_rulea = rulea.lower(&trans).unwrap();
@@ -284,10 +293,10 @@ mod test {
         {
             let ruleb = Rule::<&str, &str> {
                 if_all: vec![
-                    [any("a"), exa("ancestor"), any("b")],
-                    [any("b"), exa("ancestor"), any("c")],
+                    [Any("a"), Exa("ancestor"), Any("b")],
+                    [Any("b"), Exa("ancestor"), Any("c")],
                 ],
-                then: vec![[any("a"), exa("ancestor"), any("c")]],
+                then: vec![[Any("a"), Exa("ancestor"), Any("c")]],
             };
 
             let re_ruleb = ruleb.lower(&trans).unwrap();
@@ -345,25 +354,13 @@ mod test {
     fn lower_no_translation_err() {
         let trans = Translator::<&str>::from_iter(vec![]);
 
-        let r = Rule::<&str, &str>::create(
-            vec![[
-                Entity::Any("a"),
-                Entity::Exactly("unknown"),
-                Entity::Any("b"),
-            ]],
-            vec![],
-        )
-        .unwrap();
+        let r = Rule::create(vec![[Any("a"), Exa("unknown"), Any("b")]], vec![]).unwrap();
         let err = r.lower(&trans).unwrap_err();
         assert_eq!(err, NoTranslation(&"unknown"));
 
         let r = Rule::<&str, &str>::create(
             vec![],
-            vec![[
-                Entity::Exactly("unknown"),
-                Entity::Exactly("unknown"),
-                Entity::Exactly("unknown"),
-            ]],
+            vec![[Exa("unknown"), Exa("unknown"), Exa("unknown")]],
         )
         .unwrap();
         let err = r.lower(&trans).unwrap_err();
@@ -372,6 +369,6 @@ mod test {
 
     #[test]
     fn create_invalid() {
-        Rule::<&str, &str>::create(vec![], vec![[any("a"), any("a"), any("a")]]).unwrap_err();
+        Rule::<&str, &str>::create(vec![], vec![[Any("a"), Any("a"), Any("a")]]).unwrap_err();
     }
 }

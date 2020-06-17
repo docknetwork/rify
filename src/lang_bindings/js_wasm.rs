@@ -10,12 +10,12 @@ pub fn prove(
     to_prove: Box<[JsValue]>,
     rules: Box<[JsValue]>,
 ) -> Box<[JsValue]> {
-    let premises: Vec<[String; 3]> = premises
+    let premises: Vec<Claim<String>> = premises
         .iter()
         .map(JsValue::into_serde)
         .map(Result::unwrap)
         .collect();
-    let to_prove: Vec<[String; 3]> = to_prove
+    let to_prove: Vec<Claim<String>> = to_prove
         .iter()
         .map(JsValue::into_serde)
         .map(Result::unwrap)
@@ -23,12 +23,13 @@ pub fn prove(
     let rules: Vec<Rule<String, String>> = rules
         .iter()
         .map(|jsv| {
-            let [if_all, then]: [Vec<[Entity; 3]>; 2] = jsv.into_serde().unwrap();
-            let to_crate_ent = |ent: Vec<[Entity; 3]>| -> Vec<[crate::Entity<String, String>; 3]> {
-                ent.into_iter()
-                    .map(|[a, b, c]| [a.into(), b.into(), c.into()])
-                    .collect()
-            };
+            let [if_all, then]: [Vec<Claim<Entity>>; 2] = jsv.into_serde().unwrap();
+            let to_crate_ent =
+                |ent: Vec<Claim<Entity>>| -> Vec<Claim<crate::Entity<String, String>>> {
+                    ent.into_iter()
+                        .map(|[a, b, c]| [a.into(), b.into(), c.into()])
+                        .collect()
+                };
             Rule::create(to_crate_ent(if_all), to_crate_ent(then)).unwrap()
         })
         .collect();

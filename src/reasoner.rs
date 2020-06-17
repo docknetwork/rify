@@ -201,10 +201,11 @@ impl TripleStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{any, exa, inc};
+    use crate::common::{inc, Any, Exa};
     use crate::reasoner::{Triple, TripleStore};
     use crate::rule::{Entity, LowRule, Rule};
     use crate::translator::Translator;
+    use crate::Claim;
     use alloc::collections::{BTreeMap, BTreeSet};
     use core::iter::once;
 
@@ -340,17 +341,17 @@ mod tests {
             .collect();
 
         // load rules
-        let rules: &[[&[[Entity<&str, &str>; 3]]; 2]] = &[
+        let rules: &[[&[Claim<Entity<&str, &str>>]; 2]] = &[
             [
-                &[[any("a"), exa(&parent), any("b")]],
-                &[[any("a"), exa(&ancestor), any("b")]],
+                &[[Any("a"), Exa(&parent), Any("b")]],
+                &[[Any("a"), Exa(&ancestor), Any("b")]],
             ],
             [
                 &[
-                    [any("a"), exa(&ancestor), any("b")],
-                    [any("b"), exa(&ancestor), any("c")],
+                    [Any("a"), Exa(&ancestor), Any("b")],
+                    [Any("b"), Exa(&ancestor), Any("c")],
                 ],
-                &[[any("a"), exa(&ancestor), any("c")]],
+                &[[Any("a"), Exa(&ancestor), Any("c")]],
             ],
         ];
         let mut rrs: Vec<LowRule> = rules.iter().map(|rule| low_rule(*rule, &tran)).collect();
@@ -428,7 +429,7 @@ mod tests {
 
     /// panics if an unbound name is implied
     /// pancis if rule contains bound names that are not present in Translator
-    fn low_rule(rule: [&[[Entity<&str, &str>; 3]]; 2], trans: &Translator<&str>) -> LowRule {
+    fn low_rule(rule: [&[Claim<Entity<&str, &str>>]; 2], trans: &Translator<&str>) -> LowRule {
         let [if_all, then] = rule;
         Rule::<&str, &str>::create(if_all.to_vec(), then.to_vec())
             .unwrap()
