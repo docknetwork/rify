@@ -1,0 +1,10 @@
+{
+  "name": "rify_js",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "jest": "24.5.0",
+    "rify": "../../pkg"
+  }
+}

@@ -186,7 +186,7 @@ impl<'a, Unbound, Bound> Rule<Unbound, Bound> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvalidRule<Unbound> {
     /// Implied statements (part of the "then" property) must not contain unbound symbols that do
     /// not exist in the other side of the expression.
@@ -370,5 +370,77 @@ mod test {
     #[test]
     fn create_invalid() {
         Rule::<&str, &str>::create(vec![], vec![[Any("a"), Any("a"), Any("a")]]).unwrap_err();
+
+        // Its unfortunate that this one is illeagal but I have yet to find a way around the
+        // limitation. Can you figure out how to do this safely?
+        //
+        // if [super? claims [minor? mayclaim pred?]]
+        // and [minor? claims [s? pred? o?]]
+        // then [super? claims [s? pred? o?]]
+        //
+        // The problem is that "then" clauses aren't allowed to create new entities. A new entity is
+        // needed in order to state that last line. Example:
+        //
+        let ret = Rule::<&str, &str>::create(
+            vec![
+                // if [super? claims [minor? mayclaim pred?]]
+                [Any("super"), Exa("claims"), Any("claim1")],
+                [Any("claim1"), Exa("subject"), Any("minor")],
+                [Any("claim1"), Exa("predicate"), Exa("mayclaim")],
+                [Any("claim1"), Exa("object"), Any("pred")],
+                // and [minor? claims [s? pred? o?]]
+                [Any("minor"), Exa("claims"), Any("claim2")],
+                [Any("claim2"), Exa("subject"), Any("s")],
+                [Any("claim2"), Exa("predicate"), Any("pred")],
+                [Any("claim2"), Exa("object"), Any("o")],
+            ],
+            vec![
+                // then [super? claims [s? pred? o?]]
+                [Any("super"), Exa("claims"), Any("claim3")],
+                [Any("claim3"), Exa("subject"), Any("s")],
+                [Any("claim3"), Exa("predicate"), Any("pred")],
+                [Any("claim3"), Exa("object"), Any("o")],
+            ],
+        );
+        assert_eq!(ret, Err(InvalidRule::UnboundImplied("claim3")));
+
+        // Watch out! You may think that the following is a valid solution, but it's not.
+        //
+        // DANGEROUS, do not use without further consideration:
+        //
+        // ```
+        // if [super? claims c1?]
+        // and [c1? subject minor?]
+        // and [c1? predicate mayclaim]
+        // and [c1? object pred?]
+        //
+        // and [minor? claims c2?]
+        // and [c2? subject s?]
+        // and [c2? predicate pred?]
+        // and [c2? object o?]
+        //
+        // then [super? claims c2?]
+        // ```
+        //
+        // This is potentially dangerously incorrect because c2? may have any number of other
+        // subjects, predicates, or objects. Consider if the following were premises:
+        //
+        // ```
+        // [alice claims _:c1]
+        // [_:c1 subject s?]
+        // [_:c1 predicate mayclaim]
+        // [_:c1 object maysit]
+        //
+        // [bob claims _:c2]
+        // [_:c2 subject charlie]
+        // [_:c2 predicate maysit]
+        // [_:c2 predicate owns]
+        // [_:c2 object chair]
+        // ```
+        //
+        // With these premises, it can be proven that [alice claims [charlie owns chair]]
+        // even though alice only intendend to let [alice claims [charlie maysit chair]]
+        //
+        // Question: Is it possible to guard against these tricky premises?
     }
 }
