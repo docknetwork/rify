@@ -1,10 +1,17 @@
 {
-  "name": "rify_js",
+  "name": "rify-js-tests",
   "version": "1.0.0",
-  "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "jest": "24.5.0",
-    "rify": "../../pkg"
+    "rify": "../../pkg",
+    "chai": "^4.2.0"
+  },
+  "devDependencies": {
+    "webpack": "^4.29.3",
+    "webpack-cli": "^3.3.12"
+  },
+  "scripts": {
+    "build": "webpack",
+    "test": "webpack && node dist/bootstrap.js"
   }
 }
