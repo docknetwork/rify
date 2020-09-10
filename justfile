@@ -20,7 +20,7 @@ js-test:
 clean:
 	cargo clean
 	rm -r pkg || true
-	clean-js
+	just clean-js
 
 # remove artifacts from js bindings tests
 clean-js:
