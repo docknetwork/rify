@@ -187,6 +187,7 @@ fn recall_proof<'a>(
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum CantProve {
     /// Entire search space was exhausted. The requested proof does not exists.
     ExhaustedSearchSpace,
@@ -246,6 +247,7 @@ impl LowRuleApplication {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct RuleApplication<Bound> {
     /// The index of the rule in the implicitly associated rule list.
     pub rule_index: usize,

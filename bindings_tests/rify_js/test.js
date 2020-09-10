@@ -1,4 +1,4 @@
-import { prove } from 'rify';
+import { prove, validate } from 'rify';
 import { expect } from 'chai';
 
 // poor man's replacement for jest because making jest work with webpack+wasm is problematic
@@ -26,79 +26,151 @@ function tests(tests) {
   process.exit(passed_count === tests.length ? 0 : 1);
 }
 
+/// specify an unbound entity to be included in a rule
+function a(str) {
+  return { Unbound: str };
+}
+
+/// specify a bound entity, i.e. one whith a concrete name to be included in a rule
+function e(str) {
+  return { Bound: str };
+}
 
 // a credential in Explicit Ethos form
-const CREDENTIAL_EE = [];
+const CREDENTIAL_EE = [
+  ["root_authority", "claims", "_:0"],
+  ["_:0", "subject", "root_authority"],
+  ["_:0", "predicate", "defersTo"],
+  ["_:0", "object", "issuer"],
+  ["issuer", "claims", "_:1"],
+  ["_:1", "subject", "bobert"],
+  ["_:1", "predicate", "mayPurchase"],
+  ["_:1", "object", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle"],
+];
 const RULES = [
-  // [
-  //   [
-  //     // if [super? claims [super? defersTo minor?]]
-  //     [Any("super"), Exa("claims"), Any("claim1")],
-  //     [Any("claim1"), Exa("subject"), Any("super")],
-  //     [Any("claim1"), Exa("predicate"), Exa("defersTo")],
-  //     [Any("claim1"), Exa("object"), Any("minor")],
-  //   ],
-  //   [
-  //     // then [super? defersTo minor?]
-  //     [Any("super"), Exa("defers"), Any("minor")],
-  //   ],
-  // ],
-  // [
-  //   [
-  //     // if [super? defersTo minor?]
-  //     [Any("super"), Exa("defersTo"), Any("minor")],
-  //     // and [minor? claims claim1?]
-  //     [Any("minor"), Exa("claims"), Any("claim1")],
-  //   ],
-  //   [
-  //     // then [super? claims claim2?]
-  //     [Any("super"), Exa("claims"), Any("claim1")],
-  //   ],
-  // ],
+  // to claim deference is deference
+  {
+    if_all: [
+      [a("super"), e("claims"), a("claim1")],
+      [a("claim1"), e("subject"), a("super")],
+      [a("claim1"), e("predicate"), e("defersTo")],
+      [a("claim1"), e("object"), a("minor")],
+    ],
+    then: [
+      [a("super"), e("defersTo"), a("minor")],
+    ],
+  },
+  // defered entity may make claims on behalf of the deferer
+  {
+    if_all: [
+      [a("super"), e("defersTo"), a("minor")],
+      [a("minor"), e("claims"), a("claim1")],
+    ],
+    then: [
+      [a("super"), e("claims"), a("claim1")],
+    ],
+  },
+  // the verifier trusts root_authority
+  {
+    if_all: [
+      [e("root_authority"), e("claims"), a("c")],
+      [a("c"), e("subject"), a("s")],
+      [a("c"), e("predicate"), a("p")],
+      [a("c"), e("object"), a("o")],
+    ],
+    then: [
+      [a("s"), a("p"), a("o")],
+    ],
+  }
 ];
 
 tests([
+  ['loading of rules works', () => {
+    prove([], [], RULES);
+    validate(RULES, []);
+  }],
+
   ['The proof is the output of the theorem prover (DCK-69).', () => {
     // call `prove` then use the output of `prove` to verify the ruleset
-    const composite_claims = [];
+    const composite_claims = [
+      ["bobert", "mayPurchase", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle"]
+    ];
     let proof = prove(CREDENTIAL_EE, composite_claims, RULES);
-    expect(1 + 1).to.equal(3);
+    expect(proof).to.deep.equal([
+      {
+        rule_index: 0,
+        instantiations: ['root_authority', '_:0', 'issuer']
+      },
+      {
+        rule_index: 1,
+        instantiations: ['root_authority', 'issuer', '_:1']
+      },
+      {
+        rule_index: 2,
+        instantiations: [
+          '_:1',
+          'bobert',
+          'mayPurchase',
+          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle'
+        ]
+      }
+    ]);
+    let valid = validate(RULES, proof);
+    expect(valid).to.deep.equal({
+      assumed: [
+        ['_:0', 'object', 'issuer'],
+        ['_:0', 'predicate', 'defersTo'],
+        ['_:0', 'subject', 'root_authority'],
+        [
+          '_:1',
+          'object',
+          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle'
+        ],
+        ['_:1', 'predicate', 'mayPurchase'],
+        ['_:1', 'subject', 'bobert'],
+        ['issuer', 'claims', '_:1'],
+        ['root_authority', 'claims', '_:0']
+      ],
+      implied: [
+        [
+          'bobert',
+          'mayPurchase',
+          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle'
+        ],
+        ['root_authority', 'claims', '_:1'],
+        ['root_authority', 'defersTo', 'issuer']
+      ]
+    });
   }],
 
   ['If an invalid proof is provided, then the program correctly judges it to be invalid.', () => {
-    // // bad rule application
-    // let facts: Vec<Claim<& str>> = vec![["a", "a", "a"]];
-    // let rules_v1 = decl_rules::<& str, & str > (& [[
-    //   & [[Any("a"), Exa("a"), Exa("a")]],
-    //   & [[Exa("b"), Exa("b"), Exa("b")]],
-    // ]]);
-    // let rules_v2 = decl_rules::<& str, & str > (& [[
-    //   & [[Exa("a"), Exa("a"), Exa("a")]],
-    //   & [[Exa("b"), Exa("b"), Exa("b")]],
-    // ]]);
-    // let composite_claims = vec![["b", "b", "b"]];
-    // let proof = prove(& facts, & composite_claims, & rules_v1).unwrap();
-    // let err = validate(& rules_v2, & proof).unwrap_err();
-    // assert_eq!(err, Invalid:: BadRuleApplication);
+    let err;
 
-    // // no_such_rule
-    // let facts: Vec<Claim<& str>> = vec![["a", "a", "a"]];
-    // let rules = decl_rules::<& str, & str > (& [[
-    //   & [[Exa("a"), Exa("a"), Exa("a")]],
-    //   & [[Exa("b"), Exa("b"), Exa("b")]],
-    // ]]);
-    // let composite_claims = vec![["b", "b", "b"]];
-    // let proof = prove(& facts, & composite_claims, & rules).unwrap();
-    // let err = validate::<& str, & str > (& [], & proof).unwrap_err();
-    // assert_eq!(err, Invalid:: NoSuchRule);
-    expect(1 + 1).to.equal(3);
+    // bad rule application
+    err = catch_error(() => validate(RULES, [{ rule_index: 0, instantiations: ['only one'] }]));
+    expect(err).to.deep.equal({ InvalidProof: 'BadRuleApplication' });
+
+    // no_such_rule
+    err = catch_error(() => validate(RULES, [{ rule_index: 1000, instantiations: [] }]));
+    expect(err).to.deep.equal({ InvalidProof: 'NoSuchRule' });
   }],
 
-  // User can input a proof of composite cred derived from set of creds.
-  // The verification result is provided to the user.
-  // The program reports all composite claims which were shown to be implied.
-  // A program correctly validates the proof.
-  ['valid proof', () => {
-    expect(1 + 1).to.equal(3);
-  }],
+  // // User can input a proof of composite cred derived from set of creds.
+  // // The verification result is provided to the user.
+  // // The program reports all composite claims which were shown to be implied.
+  // // A program correctly validates the proof.
+  // ['valid proof', () => {
+  //   expect(1 + 1).to.equal(3);
+  // }],
 ]);
+
+/// catch whichever error is emitted by when cb is called and return it
+/// If no error is emitted, throw a new error
+function catch_error(cb) {
+  try {
+    cb();
+  } catch (e) {
+    return e;
+  }
+  throw "expected function to throw an error but no error was thrown";
+}

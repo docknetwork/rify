@@ -1,55 +1,128 @@
 extern crate wasm_bindgen;
 
+use crate::rule::InvalidRule;
+use crate::RuleApplication;
 use crate::{Claim, Rule};
+use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 
-/// This function work but it will panic with unhelpful error messages unles you get the types just
-/// right.
+/// Locate a proof of some composite claims given the provied premises and rules.
 ///
-/// Helpful error messages are a TODO.
+/// ```js
+/// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+/// let awesome_score_axiom = {
+///     if_all: [
+///         [{Unbound: "a"}, {Bound: "is"}, {Bound: "awesome"}],
+///         [{Unbound: "a"}, {Bound: "score"}, {Unbound: "s"}],
+///     ],
+///     then: [
+///         [{Unbound: "a"}, {Bound: "score"}, {Bound: "awesome"}]
+///     ],
+/// };
+/// let proof = prove(
+///   [
+///      ["you", "score", "unspecified"],
+///      ["you", "is", "awesome"],
+///   ],
+///   [["you", "score", "awesome"]],
+///   [awesome_score_axiom],
+/// );
+/// expect(proof).to.equal([{
+///     rule_index: 0,
+///     instantiations: ["you", "unspecified"]
+/// }])
+/// ```
 ///
-/// This function needs docs, js type annotations, and a js example. TODO
+/// TODO: run the above code snippet an make sure it works
 #[wasm_bindgen]
 pub fn prove(
     premises: Box<[JsValue]>,
     to_prove: Box<[JsValue]>,
     rules: Box<[JsValue]>,
-) -> Box<[JsValue]> {
-    let premises: Vec<Claim<String>> = premises
-        .iter()
-        .map(JsValue::into_serde)
-        .map(Result::unwrap)
-        .collect();
-    let to_prove: Vec<Claim<String>> = to_prove
-        .iter()
-        .map(JsValue::into_serde)
-        .map(Result::unwrap)
-        .collect();
-    let rules: Vec<Rule<String, String>> = rules
-        .iter()
-        .map(|jsv| {
-            let [if_all, then]: [Vec<Claim<Entity>>; 2] = jsv.into_serde().unwrap();
-            let to_crate_ent =
-                |ent: Vec<Claim<Entity>>| -> Vec<Claim<crate::Entity<String, String>>> {
-                    ent.into_iter()
-                        .map(|[a, b, c]| [a.into(), b.into(), c.into()])
-                        .collect()
-                };
-            Rule::create(to_crate_ent(if_all), to_crate_ent(then)).unwrap()
-        })
-        .collect();
-    crate::prove(&premises, &to_prove, &rules)
-        .unwrap()
-        .into_iter()
-        .map(|ra| {
-            let ral: RuleApplication = ra.into();
-            JsValue::from_serde(&ral).unwrap()
-        })
-        .collect()
+) -> Result<Box<[JsValue]>, JsValue> {
+    let proof = prove_(
+        deser_list(premises)?,
+        deser_list(to_prove)?,
+        deser_list(rules)?,
+    )?;
+    Ok(ser_list(&proof))
 }
 
-#[derive(serde::Deserialize)]
-enum Entity {
+pub(super) fn prove_(
+    premises: Vec<Claim<String>>,
+    to_prove: Vec<Claim<String>>,
+    rules: Vec<RuleUnchecked>,
+) -> Result<Vec<RuleApplication<String>>, Error> {
+    let rules = RuleUnchecked::check_all(rules)?;
+    let proof = crate::prove(&premises, &to_prove, &rules).map_err(Into::<Error>::into)?;
+    Ok(proof)
+}
+
+// doc comment copied from ../validate.rs
+/// Check is a proof is well-formed according to a ruleset. Returns the set of assumptions used by
+/// the proof and the set of statements those assumptions imply. If all the assumptions are true,
+/// and then all the implied claims are true under the provided ruleset.
+///
+/// Validating a proof checks whether the proof is valid, but not whether implied claims are true.
+/// Additional steps need to be performed to ensure the proof is true. You can use the following
+/// statement to check soundness:
+///
+/// ```customlang
+/// forall assumed, implied, rules, proof:
+///   if Ok(Valid { assumed, implied }) = validate(rules, proof)
+///   and all assumed are true
+///   and all rules are true
+///   then all implied are true
+/// ```
+///
+/// ```js
+/// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+/// let awesome_score_axiom = { ... };
+/// let known_facts = [
+///     ["you", "score", "unspecified"],
+///     ["you", "is", "awesome"],
+/// ];
+/// let valid = validate(
+///   [awesome_score_axiom],
+///   [{
+///     rule_index: 0,
+///     instantiations: ["you", "unspecified"]
+///   }],
+/// );
+/// expect(valid).to.equal({
+///     assumed: [[
+///         ["you", "score", "unspecified"],
+///         ["you", "is", "awesome"],
+///     ]],
+///     implied: [
+///         ["you", "score", "awesome"],
+///     ]
+/// })
+/// for (let f of valid.assumed) {
+///     // Here we would check whether f is in known facts. If not,
+///     // valid.implied is not known to be true.
+///     todo("show how the results of this function should be used");
+/// }
+/// ```
+///
+/// TODO: run the above code snippet an make sure it works
+#[wasm_bindgen]
+pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> Result<JsValue, JsValue> {
+    let valid = validate_(deser_list(rules)?, deser_list(proof)?)?;
+    Ok(ser(&valid))
+}
+
+pub(super) fn validate_(
+    rules: Vec<RuleUnchecked>,
+    proof: Vec<RuleApplication<String>>,
+) -> Result<crate::validate::Valid<String>, Error> {
+    let rules = RuleUnchecked::check_all(rules)?;
+    let valid = crate::validate::validate(&rules, &proof)?;
+    Ok(valid)
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(super) enum Entity {
     Unbound(String),
     Bound(String),
 }
@@ -63,30 +136,93 @@ impl From<Entity> for crate::Entity<String, String> {
     }
 }
 
-#[derive(serde::Serialize)]
-pub struct RuleApplication {
-    /// The index of the rule in the implicitly associated rule list.
-    pub rule_index: usize,
-    /// Bindings for unbound names in the rule in order of appearance.
-    pub instantiations: Vec<String>,
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+pub enum Error {
+    InputTypo,
+    InvalidRule(InvalidRule<String>),
+    CantProve(crate::prove::CantProve),
+    InvalidProof(crate::validate::Invalid),
 }
 
-impl From<crate::RuleApplication<String>> for RuleApplication {
-    fn from(other: crate::RuleApplication<String>) -> Self {
-        let crate::RuleApplication {
-            rule_index,
-            instantiations,
-        } = other;
-        RuleApplication {
-            rule_index,
-            instantiations,
-        }
+impl From<Error> for JsValue {
+    fn from(e: Error) -> JsValue {
+        JsValue::from_serde(&e).unwrap()
     }
 }
 
-/// This function is just a stub right now. It will panic immediately if you call it. TODO
-#[wasm_bindgen]
-pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> JsValue {
-    let _ = (rules, proof);
-    unimplemented!()
+impl From<InvalidRule<String>> for Error {
+    fn from(other: InvalidRule<String>) -> Self {
+        Error::InvalidRule(other)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(_: serde_json::Error) -> Error {
+        Error::InputTypo
+    }
+}
+
+impl From<crate::prove::CantProve> for Error {
+    fn from(other: crate::prove::CantProve) -> Self {
+        Error::CantProve(other)
+    }
+}
+
+impl From<crate::validate::Invalid> for Error {
+    fn from(other: crate::validate::Invalid) -> Self {
+        Error::InvalidProof(other)
+    }
+}
+
+/// Deserialize a list of js values into a list of rust values
+fn deser_list<T: DeserializeOwned>(a: Box<[JsValue]>) -> Result<Vec<T>, Error> {
+    a.iter().map(|b| deser::<T>(b)).collect()
+}
+
+/// Deserialize a js value into a rust value
+fn deser<T: DeserializeOwned>(a: &JsValue) -> Result<T, Error> {
+    JsValue::into_serde(&a).map_err(Into::into)
+}
+
+/// Serialize a list of rust value into a list of js values
+///
+/// # Panics
+///
+/// Panics if input cannot be deserialived.
+fn ser_list<T: serde::Serialize>(a: &[T]) -> Box<[JsValue]> {
+    let ret: Vec<JsValue> = a.iter().map(ser).collect();
+    ret.into()
+}
+
+/// Serialize a rust value into a js value
+///
+/// # Panics
+///
+/// Panics if input cannot be deserialived.
+fn ser<T: serde::Serialize>(a: &T) -> JsValue {
+    JsValue::from_serde(a).unwrap()
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RuleUnchecked {
+    pub(super) if_all: Vec<Claim<Entity>>,
+    pub(super) then: Vec<Claim<Entity>>,
+}
+
+impl RuleUnchecked {
+    fn check(self) -> Result<Rule<String, String>, Error> {
+        let RuleUnchecked { if_all, then } = self;
+        let if_all = if_all.into_iter().map(convert_claim).collect();
+        let then = then.into_iter().map(convert_claim).collect();
+        Rule::create(if_all, then).map_err(Into::into)
+    }
+
+    fn check_all(rus: Vec<RuleUnchecked>) -> Result<Vec<Rule<String, String>>, Error> {
+        rus.into_iter().map(Self::check).collect()
+    }
+}
+
+fn convert_claim<T, A: Into<T>>(c: Claim<A>) -> Claim<T> {
+    let [s, p, o] = c;
+    [s.into(), p.into(), o.into()]
 }

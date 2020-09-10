@@ -20,5 +20,9 @@ js-test:
 clean:
 	cargo clean
 	rm -r pkg || true
+	clean-js
+
+# remove artifacts from js bindings tests
+clean-js:
 	rm -r bindings_tests/rify_js/dist || true
 	rm -r bindings_tests/rify_js/node_modules || true

@@ -187,6 +187,7 @@ impl<'a, Unbound, Bound> Rule<Unbound, Bound> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum InvalidRule<Unbound> {
     /// Implied statements (part of the "then" property) must not contain unbound symbols that do
     /// not exist in the other side of the expression.

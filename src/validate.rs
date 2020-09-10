@@ -6,7 +6,7 @@ use alloc::collections::BTreeSet;
 /// the proof and the set of statements those assumptions imply. If all the assumptions are true,
 /// and then all the implied claims are true under the provided ruleset.
 ///
-/// Validating a proof checks whether the is valid, but not whether implied claims are true.
+/// Validating a proof checks whether the proof is valid, but not whether implied claims are true.
 /// Additional steps need to be performed to ensure the proof is true. You can use the following
 /// statement to check soundness:
 ///
@@ -43,12 +43,18 @@ pub fn validate<Unbound: Ord + Clone, Bound: Ord + Clone>(
 /// Given the rules which were passed, if all the claims in `assumed` are true then all the
 /// claims in `implied` are true.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Valid<Bound> {
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(serialize = "Bound: Ord", deserialize = "Bound: Ord"))
+    )]
     pub assumed: BTreeSet<Claim<Bound>>,
     pub implied: BTreeSet<Claim<Bound>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Invalid {
     /// The Rule being applied expects a different number of name bindings.
     BadRuleApplication,
