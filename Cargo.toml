@@ -3,7 +3,10 @@ name = "rify"
 version = "0.1.0"
 authors = ["Andrew Dirksen <andrew@dirksen.com>"]
 edition = "2018"
-description = "unfinished sketch of an RDF reasoner that operates on RIF-like conjunctive rules"
+description = """
+RDF reasoner that operates on RIF-like conjunctive rules. Outputs a machine
+readable proof of some claim which can be cheaply verified.
+"""
 
 [lib]
 crate-type = ["cdylib", "lib"]
