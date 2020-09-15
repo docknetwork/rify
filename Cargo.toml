@@ -8,6 +8,8 @@ RDF reasoner that operates on RIF-like conjunctive rules. Outputs a machine
 readable proof of some claim which can be cheaply verified.
 """
 license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/rify"
+readme = "README.md"
 
 [lib]
 crate-type = ["cdylib", "lib"]
