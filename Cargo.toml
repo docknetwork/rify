@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/rify"
 readme = "README.md"
 repository = "https://github.com/docknetwork/rify"
+wasm-opt = false
 
 [lib]
 crate-type = ["cdylib", "lib"]

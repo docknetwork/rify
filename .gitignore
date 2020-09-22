@@ -1,4 +1,7 @@
+node_modules
+/dist
 /target
-Cargo.lock
 /pkg
-tmp
+/pkgweb
+/wasm-pack.log
+/tmp

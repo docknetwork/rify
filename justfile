@@ -1,6 +1,6 @@
 # build wasm and js bindings
 js:
-	wasm-pack build -- --features js-library-wasm
+  wasm-pack build --target nodejs
 
 # install js test depenedenicies, requires yarn
 js-test-init:
