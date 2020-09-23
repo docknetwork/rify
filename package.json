@@ -16,6 +16,12 @@
     "index.js",
     "index_bg.js",
     "index.d.ts",
+    "index_bg.wasm.d.ts",
+    "index_bundle_bg.wasm",
+    "index_bundle.js",
+    "index_bundle_bg.js",
+    "index_bundle.d.ts",
+    "index_bundle_bg.wasm.d.ts",
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
