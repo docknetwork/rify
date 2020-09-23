@@ -1,7 +1,10 @@
 [package]
 name = "rify"
 version = "0.3.0"
-authors = ["Andrew Dirksen <andrew@dirksen.com>"]
+authors = [
+  "Andrew Dirksen <andrew@dirksen.com>",
+  "Sam Hellawell <sshellawell@gmail.com>"
+]
 edition = "2018"
 description = """
 RDF reasoner that operates on RIF-like conjunctive rules. Outputs a machine
@@ -11,6 +14,9 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/rify"
 readme = "README.md"
 repository = "https://github.com/docknetwork/rify"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [lib]
 crate-type = ["cdylib", "lib"]

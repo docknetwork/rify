@@ -1,4 +1,4 @@
 /target
-Cargo.lock
 /pkg
-tmp
+/wasm-pack.log
+/tmp
