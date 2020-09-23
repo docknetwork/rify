@@ -11,6 +11,8 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/rify"
 readme = "README.md"
 repository = "https://github.com/docknetwork/rify"
+
+[package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
 [lib]

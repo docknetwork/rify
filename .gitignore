@@ -1,7 +1,5 @@
 node_modules
-/dist
 /target
 /pkg
-/pkgweb
 /wasm-pack.log
 /tmp

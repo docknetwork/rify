@@ -1,6 +1,9 @@
 # build wasm and js bindings
 js:
-  wasm-pack build --target nodejs
+  rm -rf pkg
+  wasm-pack build --target nodejs --out-dir pkg --out-name index
+  wasm-pack build --target bundler --out-dir pkg --out-name index_bundle
+  cp package.json pkg/package.json
 
 # install js test depenedenicies, requires yarn
 js-test-init:
