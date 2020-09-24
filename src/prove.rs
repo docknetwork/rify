@@ -592,4 +592,19 @@ mod test {
         let proof = prove(&facts, &composite_claims, &rules).unwrap();
         assert_eq!(&proof, &vec![]);
     }
+
+    #[test]
+    fn unconditional_rule() {
+        let facts: Vec<Claim<&str>> = vec![];
+        let rules = decl_rules::<&str, &str>(&[[&[], &[[Exa("nachos"), Exa("are"), Exa("food")]]]]);
+        let composite_claims = vec![["nachos", "are", "food"]];
+        let proof = prove(&facts, &composite_claims, &rules).unwrap();
+        assert_eq!(
+            &proof,
+            &[RuleApplication {
+                rule_index: 0,
+                instantiations: vec![]
+            }]
+        );
+    }
 }
