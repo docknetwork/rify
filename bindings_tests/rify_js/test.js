@@ -162,6 +162,74 @@ tests([
   // ['valid proof', () => {
   //   expect(1 + 1).to.equal(3);
   // }],
+
+  ['Example from doctest for prove actually runs.', () => {
+    // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+    let awesome_score_axiom = {
+      if_all: [
+        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
+        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+      ],
+      then: [
+        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+      ],
+    };
+    let proof = prove(
+      [
+        ["you", "score", "unspecified"],
+        ["you", "is", "awesome"],
+      ],
+      [["you", "score", "awesome"]],
+      [awesome_score_axiom],
+    );
+    expect(proof).to.deep.equal([{
+      rule_index: 0,
+      instantiations: ["you", "unspecified"]
+    }])
+  }],
+
+  ['Example from doctest for validate actually runs.', () => {
+    // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+    let awesome_score_axiom = {
+      if_all: [
+        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
+        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+      ],
+      then: [
+        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+      ],
+    };
+    let known_facts = [
+      ["you", "score", "unspecified"],
+      ["you", "is", "awesome"],
+    ];
+    let valid = validate(
+      [awesome_score_axiom],
+      [{
+        rule_index: 0,
+        instantiations: ["you", "unspecified"]
+      }],
+    );
+    expect(valid).to.deep.equal({
+      assumed: [
+        ["you", "is", "awesome"],
+        ["you", "score", "unspecified"],
+      ],
+      implied: [
+        ["you", "score", "awesome"],
+      ]
+    });
+
+    // now we check that all the assumptions made by the proof are known to be true
+    for (let f of valid.assumed) {
+      if (!known_facts.some(kf => JSON.stringify(kf) === JSON.stringify(f))) {
+        throw new Error("Proof makes an unverified assumption.");
+      }
+    }
+
+    // After verifying all the assumptions in the proof are true, we know that the
+    // triples in valid.implied are true with respect to the provided rules.
+  }],
 ]);
 
 /// catch whichever error is emitted by when cb is called and return it

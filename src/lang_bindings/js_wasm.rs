@@ -6,7 +6,7 @@ use crate::{Claim, Rule};
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 
-/// Locate a proof of some composite claims given the provied premises and rules.
+/// Locate a proof of some composite claims given the provided premises and rules.
 ///
 /// ```js
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
@@ -27,13 +27,11 @@ use wasm_bindgen::prelude::*;
 ///   [["you", "score", "awesome"]],
 ///   [awesome_score_axiom],
 /// );
-/// expect(proof).to.equal([{
+/// expect(proof).to.deep.equal([{
 ///     rule_index: 0,
 ///     instantiations: ["you", "unspecified"]
 /// }])
 /// ```
-///
-/// TODO: run the above code snippet an make sure it works
 #[wasm_bindgen]
 pub fn prove(
     premises: Box<[JsValue]>,
@@ -58,18 +56,18 @@ pub(super) fn prove_(
     Ok(proof)
 }
 
-// doc comment copied from ../validate.rs
 /// Check is a proof is well-formed according to a ruleset. Returns the set of assumptions used by
 /// the proof and the set of statements those assumptions imply. If all the assumptions are true,
-/// and then all the implied claims are true under the provided ruleset.
+/// then all the implied claims are true under the provided ruleset.
 ///
-/// Validating a proof checks whether the proof is valid, but not whether implied claims are true.
-/// Additional steps need to be performed to ensure the proof is true. You can use the following
-/// statement to check soundness:
+/// To restate, validating a proof checks whether the proof is valid, but not whether implied
+/// claims are true. Additional steps need to be performed to ensure the proof is true. You can use
+/// the following statement to check soundness:
 ///
 /// ```customlang
 /// forall assumed, implied, rules, proof:
-///   if Ok(Valid { assumed, implied }) = validate(rules, proof)
+///   let { assumed, implied } = validate(rules, proof);
+///   If validate() doesn't throw,
 ///   and all assumed are true
 ///   and all rules are true
 ///   then all implied are true
@@ -77,10 +75,18 @@ pub(super) fn prove_(
 ///
 /// ```js
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
-/// let awesome_score_axiom = { ... };
+/// let awesome_score_axiom = {
+///   if_all: [
+///     [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
+///     [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+///   ],
+///   then: [
+///     [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+///   ],
+/// };
 /// let known_facts = [
-///     ["you", "score", "unspecified"],
-///     ["you", "is", "awesome"],
+///   ["you", "score", "unspecified"],
+///   ["you", "is", "awesome"],
 /// ];
 /// let valid = validate(
 ///   [awesome_score_axiom],
@@ -89,23 +95,26 @@ pub(super) fn prove_(
 ///     instantiations: ["you", "unspecified"]
 ///   }],
 /// );
-/// expect(valid).to.equal({
-///     assumed: [[
-///         ["you", "score", "unspecified"],
-///         ["you", "is", "awesome"],
-///     ]],
-///     implied: [
-///         ["you", "score", "awesome"],
-///     ]
-/// })
-/// for (let f of valid.assumed) {
-///     // Here we would check whether f is in known facts. If not,
-///     // valid.implied is not known to be true.
-///     todo("show how the results of this function should be used");
-/// }
-/// ```
+/// expect(valid).to.deep.equal({
+///   assumed: [
+///     ["you", "is", "awesome"],
+///     ["you", "score", "unspecified"],
+///   ],
+///   implied: [
+///     ["you", "score", "awesome"],
+///   ]
+/// });
 ///
-/// TODO: run the above code snippet an make sure it works
+/// // now we check that all the assumptions made by the proof are known to be true
+/// for (let f of valid.assumed) {
+///   if (!known_facts.some(kf => JSON.stringify(kf) === JSON.stringify(f))) {
+///     throw new Error("Proof makes an unverified assumption.");
+///   }
+/// }
+///
+/// // After verifying all the assumptions in the proof are true, we know that the
+/// // triples in valid.implied are true with respect to the provided rules.
+/// ```
 #[wasm_bindgen]
 pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> Result<JsValue, JsValue> {
     let valid = validate_(deser_list(rules)?, deser_list(proof)?)?;
