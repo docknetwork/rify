@@ -1,3 +1,5 @@
+# https://github.com/casey/just
+
 # build wasm and js bindings
 js:
   rm -rf pkg

@@ -17,6 +17,42 @@ use alloc::collections::BTreeSet;
 ///   and all rules are true
 ///   then all implied are true
 /// ```
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use rify::{
+///     prove, validate, Valid,
+///     Entity::{Any, Exactly},
+///     Rule, RuleApplication,
+/// };
+///
+/// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+/// let awesome_score_axiom = Rule::create(
+///     vec![
+///         [Any("a"), Exactly("is"), Exactly("awesome")], // if someone is awesome
+///         [Any("a"), Exactly("score"), Any("s")],    // and they have some score
+///     ],
+///     vec![[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
+/// )?;
+///
+/// let proof = vec![
+///     // (you is awesome) ∧ (you score unspecified) -> (you score awesome)
+///     RuleApplication {
+///         rule_index: 0,
+///         instantiations: vec!["you", "unspecified"]
+///     }
+/// ];
+///
+/// let Valid { assumed, implied } = validate::<&str, &str>(
+///     &[awesome_score_axiom],
+///     &proof,
+/// ).map_err(|e| format!("{:?}", e))?;
+///
+/// // Now we know that under the given rules, if all RDF triples in `assumed` are true, then all
+/// // RDF triples in `implied` are also true.
+/// # Ok(())
+/// # }
+/// ```
 pub fn validate<Unbound: Ord + Clone, Bound: Ord + Clone>(
     rules: &[Rule<Unbound, Bound>],
     proof: &[RuleApplication<Bound>],
