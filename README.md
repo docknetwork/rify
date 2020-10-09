@@ -14,14 +14,14 @@ Logical rules are defined as if-then clauses. Something like this:
 
 ```rust
 struct Rule {
-	if_all: Vec<[Entity; 3]>,
-	then: Vec<[Entity; 3]>,
+    if_all: Vec<[Entity; 3]>,
+    then: Vec<[Entity; 3]>,
 }
 
 enum Entity {
-	/// A a named variable with an unknown value.
+    /// A a named variable with an unknown value.
     Any(String),
-	/// A literal RDF node.
+    /// A literal RDF node.
     Exactly(RdfNode),
 }
 
@@ -33,7 +33,7 @@ enum Entity {
 Two functions are central to this library: `prove` and `validate`.
 
 ```rust
-# Example use of `prove`
+// Example use of `prove`
 
 use rify::{
     prove,
@@ -67,7 +67,7 @@ assert_eq!(
 ```
 
 ```rust
-# Example use of `validate`
+// Example use of `validate`
 
 use rify::{
     prove, validate, Valid,
