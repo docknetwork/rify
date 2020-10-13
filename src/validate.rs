@@ -2,9 +2,9 @@ use crate::prove::BadRuleApplication;
 use crate::{Claim, Rule, RuleApplication};
 use alloc::collections::BTreeSet;
 
-/// Check is a proof is well-formed according to a ruleset. Returns the set of assumptions used by
+/// Check if a proof is well-formed according to a ruleset. Returns the set of assumptions used by
 /// the proof and the set of statements those assumptions imply. If all the assumptions are true,
-/// and then all the implied claims are true under the provided ruleset.
+/// then all the implied claims are true under the provided ruleset.
 ///
 /// Validating a proof checks whether the proof is valid, but not whether implied claims are true.
 /// Additional steps need to be performed to ensure the proof is true. You can use the following

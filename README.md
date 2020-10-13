@@ -19,7 +19,7 @@ struct Rule {
 }
 
 enum Entity {
-    /// A a named variable with an unknown value.
+    /// A named variable with an unknown value.
     Any(String),
     /// A literal RDF node.
     Exactly(RdfNode),
@@ -98,7 +98,7 @@ let Valid { assumed, implied } = validate::<&str, &str>(
 # recipies
 
 In addition to normal cargo commands like `cargo test` and `cargo check` the `./justfile`
-defines some scripts which can be useful during develompent. For example, `just js-test` will
+defines some scripts which can be useful during development. For example, `just js-test` will
 test the javascript bindings to this library. See `./justfile` for more.
 
 # License

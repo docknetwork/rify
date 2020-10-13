@@ -301,7 +301,7 @@ mod tests {
         // The second rule, (?a ancestor ?b) and (?b ancestor ?c) -> (?a ancestor ?c), should not
         // activate because results from application of first rule have not been added to the rdf
         // store so there are there are are not yet any ancestry relations present.
-        let mut expected_intantiations: Vec<BTreeMap<u32, u32>> = nodes
+        let mut expected_instantiations: Vec<BTreeMap<u32, u32>> = nodes
             .iter()
             .zip(nodes.iter().cycle().skip(1))
             .map(|(a, b)| {
@@ -312,8 +312,8 @@ mod tests {
             })
             .collect();
         results.sort();
-        expected_intantiations.sort();
-        assert_eq!(results, expected_intantiations);
+        expected_instantiations.sort();
+        assert_eq!(results, expected_instantiations);
     }
 
     #[test]
@@ -428,7 +428,7 @@ mod tests {
     }
 
     /// panics if an unbound name is implied
-    /// pancis if rule contains bound names that are not present in Translator
+    /// panics if rule contains bound names that are not present in Translator
     fn low_rule(rule: [&[Claim<Entity<&str, &str>>]; 2], trans: &Translator<&str>) -> LowRule {
         let [if_all, then] = rule;
         Rule::<&str, &str>::create(if_all.to_vec(), then.to_vec())

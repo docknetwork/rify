@@ -215,8 +215,8 @@ impl LowRuleApplication {
     /// Panics
     ///
     /// This function will panic if:
-    ///   - an unbound item from originial_rule is not instatiated by self
-    ///   - or there is no translation for a global instatiation of one of the unbound entities in
+    ///   - an unbound item from originial_rule is not instantiated by self
+    ///   - or there is no translation for a global instantiation of one of the unbound entities in
     ///     original_rule.
     fn raise<Unbound: Ord, Bound: Ord + Clone>(
         &self,
@@ -227,12 +227,12 @@ impl LowRuleApplication {
 
         // unbound_human -> unbound_local
         let uhul: BTreeMap<&Unbound, u32> = original_rule
-            .cononical_unbound()
+            .canonical_unbound()
             .enumerate()
             .map(|(a, b)| (b, a.try_into().unwrap()))
             .collect();
 
-        for unbound_human in original_rule.cononical_unbound() {
+        for unbound_human in original_rule.canonical_unbound() {
             let unbound_local = uhul[unbound_human];
             let bound_global = self.instantiations[&unbound_local];
             let bound_human = trans.back(bound_global).unwrap();
@@ -277,7 +277,7 @@ impl<Bound: Clone> RuleApplication<Bound> {
         claims: &'a [Claim<Entity<Unbound, Bound>>],
     ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
         let cannon: BTreeMap<&Unbound, usize> = rule
-            .cononical_unbound()
+            .canonical_unbound()
             .enumerate()
             .map(|(ub, n)| (n, ub))
             .collect();
@@ -298,26 +298,26 @@ impl<Bound: Clone> RuleApplication<Bound> {
 fn bind_claim<Unbound: Ord, Bound: Clone>(
     [s, p, o]: Claim<Entity<Unbound, Bound>>,
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> Claim<Bound> {
     [
-        bind_entity(s, map, instanitations),
-        bind_entity(p, map, instanitations),
-        bind_entity(o, map, instanitations),
+        bind_entity(s, map, instantiations),
+        bind_entity(p, map, instantiations),
+        bind_entity(o, map, instantiations),
     ]
 }
 
 /// Panics
 ///
 /// panics if an unbound entity is not registered in map
-/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+/// panics if the canonical index of unbound (according to map) is too large to index instantiations
 fn bind_entity<Unbound: Ord, Bound: Clone>(
     e: Entity<Unbound, Bound>,
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> Bound {
     match e {
-        Entity::Any(a) => instanitations[map[&a]].clone(),
+        Entity::Any(a) => instantiations[map[&a]].clone(),
         Entity::Exactly(e) => e,
     }
 }

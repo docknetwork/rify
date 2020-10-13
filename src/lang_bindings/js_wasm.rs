@@ -197,7 +197,7 @@ fn deser<T: DeserializeOwned>(a: &JsValue) -> Result<T, Error> {
 ///
 /// # Panics
 ///
-/// Panics if input cannot be deserialived.
+/// Panics if input cannot be deserialized.
 fn ser_list<T: serde::Serialize>(a: &[T]) -> Box<[JsValue]> {
     let ret: Vec<JsValue> = a.iter().map(ser).collect();
     ret.into()
@@ -207,7 +207,7 @@ fn ser_list<T: serde::Serialize>(a: &[T]) -> Box<[JsValue]> {
 ///
 /// # Panics
 ///
-/// Panics if input cannot be deserialived.
+/// Panics if input cannot be deserialized.
 fn ser<T: serde::Serialize>(a: &T) -> JsValue {
     JsValue::from_serde(a).unwrap()
 }

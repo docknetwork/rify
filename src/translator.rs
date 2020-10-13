@@ -2,7 +2,7 @@
 //! abstract entities. The only requirement for these entities is that they have some total
 //! ordering (the reasoner needs to keep indices of entity relationships for efficient joins).
 //! The reasoner represents these entities as u32. RDF entities are usually expressed as some
-//! other type e.g. String. This module provides a way to generates and stores a mapping from
+//! other type e.g. String. This module provides a way to generate and store a mapping from
 //! some type T to u32. The mapping is bijective (it goes both ways) so after reasoning is
 //! performed, the results can be converted back to the original format with entities of type T.
 
@@ -13,12 +13,13 @@ use core::iter::FromIterator;
 /// bijective mapping from some type T to u32
 #[derive(Debug)]
 pub struct Translator<T> {
+    /// stores a boxed slice
     /// represents both u32 -> T and T -> u32
     widdershins: Box<[T]>,
 }
 
 impl<T: Ord> Translator<T> {
-    /// lookup the entity representing t
+    /// lookup the entity representing `t` and return index of `t` in slice
     pub fn forward(&self, t: &impl Borrow<T>) -> Option<u32> {
         debug_assert!(
             TryInto::<u32>::try_into(self.widdershins.len().saturating_sub(1)).is_ok(),
@@ -30,13 +31,13 @@ impl<T: Ord> Translator<T> {
             .map(|a: usize| a as u32)
     }
 
-    /// lookup the t that the entity represents
+    /// lookup the t that the entity represents, `a` is index in the slice
     pub fn back(&self, a: u32) -> Option<&T> {
         self.widdershins.get(a as usize)
     }
 }
 
-// TODO: The user of this impl probably won't expect an implementaion of FromIterator to panic
+// TODO: The user of this impl probably won't expect an implementation of FromIterator to panic
 //       This impl panics if there are too many elements to index with a u32.
 impl<T: Ord> FromIterator<T> for Translator<T> {
     fn from_iter<I: IntoIterator<Item = T>>(src: I) -> Self {

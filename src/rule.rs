@@ -57,6 +57,7 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
         if_all: Vec<Claim<Entity<Unbound, Bound>>>,
         then: Vec<Claim<Entity<Unbound, Bound>>>,
     ) -> Result<Self, InvalidRule<Unbound>> {
+        // Having `unbound_if` as a "Set" would make the invariant check faster
         let unbound_if = if_all.iter().flatten().filter_map(Entity::as_unbound);
         let unbound_then = then.iter().flatten().filter_map(Entity::as_unbound);
 
@@ -70,13 +71,13 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
     }
 
     pub(crate) fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
-        // There are three types of name at play here.
+        // There are three types of names at play here.
         // - human names are represented as Entities
         // - local names are local to the rule we are creating. they are represented as u32
         // - global names are from the translator. they are represented as u32
 
         // assign local names to each human name
-        // local names will be in a continous range from 0.
+        // local names will be in a continuous range from 0.
         // smaller local names will represent unbound entities, larger ones will represent bound
         let mut next_local = 0u32;
         let unbound_map = {
@@ -155,7 +156,7 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
 
 impl<'a, Unbound: Ord, Bound> Rule<Unbound, Bound> {
     /// List the unique unbound names in this rule in order of appearance.
-    pub(crate) fn cononical_unbound(&self) -> impl Iterator<Item = &Unbound> {
+    pub(crate) fn canonical_unbound(&self) -> impl Iterator<Item = &Unbound> {
         let mut listed = BTreeSet::<&Unbound>::new();
         self.if_all
             .iter()
@@ -372,7 +373,7 @@ mod test {
     fn create_invalid() {
         Rule::<&str, &str>::create(vec![], vec![[Any("a"), Any("a"), Any("a")]]).unwrap_err();
 
-        // Its unfortunate that this one is illeagal but I have yet to find a way around the
+        // Its unfortunate that this one is illegal but I have yet to find a way around the
         // limitation. Can you figure out how to do this safely?
         //
         // if [super? claims [minor? mayclaim pred?]]

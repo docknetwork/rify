@@ -15,4 +15,5 @@ pub use prove::{prove, RuleApplication};
 pub use rule::{Entity, Rule};
 pub use validate::{validate, Invalid, Valid};
 
+// A Claim is an RDF triple
 pub type Claim<T> = [T; 3];
