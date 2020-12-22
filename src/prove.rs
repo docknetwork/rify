@@ -12,17 +12,17 @@ use core::fmt::{Debug, Display};
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use rify::{
 ///     prove,
-///     Entity::{Any, Exactly},
+///     Entity::{Unbound, Bound},
 ///     Rule, RuleApplication,
 /// };
 ///
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = Rule::create(
 ///     vec![
-///         [Any("a"), Exactly("is"), Exactly("awesome")], // if someone is awesome
-///         [Any("a"), Exactly("score"), Any("s")],    // and they have some score
+///         [Unbound("a"), Bound("is"), Bound("awesome")], // if someone is awesome
+///         [Unbound("a"), Bound("score"), Unbound("s")],  // and they have some score
 ///     ],
-///     vec![[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
+///     vec![[Unbound("a"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
 /// )?;
 ///
 /// assert_eq!(
@@ -317,8 +317,8 @@ fn bind_entity<Unbound: Ord, Bound: Clone>(
     instanitations: &[Bound],
 ) -> Bound {
     match e {
-        Entity::Any(a) => instanitations[map[&a]].clone(),
-        Entity::Exactly(e) => e,
+        Entity::Unbound(a) => instanitations[map[&a]].clone(),
+        Entity::Bound(e) => e,
     }
 }
 
@@ -330,7 +330,7 @@ pub struct BadRuleApplication;
 mod test {
     use super::*;
     use crate::common::{decl_rules, inc};
-    use crate::rule::Entity::{Any, Exactly as Exa};
+    use crate::rule::Entity::{Bound, Unbound};
     use crate::validate::validate;
     use crate::validate::Valid;
 
@@ -367,8 +367,8 @@ mod test {
             &[
                 Rule::create(vec![], vec![]).unwrap(),
                 Rule::create(
-                    vec![[Any("a"), Exa("ability"), Exa("backflip")]],
-                    vec![[Any("a"), Exa("score"), Exa("awesome")]],
+                    vec![[Unbound("a"), Bound("ability"), Bound("backflip")]],
+                    vec![[Unbound("a"), Bound("score"), Bound("awesome")]],
                 )
                 .unwrap(),
             ],
@@ -396,10 +396,10 @@ mod test {
         // (?boi, is, awesome) ∧ (?boi, score, ?s) -> (?boi score, awesome)
         let awesome_score_axiom = Rule::create(
             vec![
-                [Any("boi"), Exa("is"), Exa("awesome")], // if someone is awesome
-                [Any("boi"), Exa("score"), Any("s")],    // and they have some score
+                [Unbound("boi"), Bound("is"), Bound("awesome")], // if someone is awesome
+                [Unbound("boi"), Bound("score"), Unbound("s")],  // and they have some score
             ],
-            vec![[Any("boi"), Exa("score"), Exa("awesome")]], // then they must have an awesome score
+            vec![[Unbound("boi"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
         )
         .unwrap();
         assert_eq!(
@@ -445,23 +445,35 @@ mod test {
             let ru: &[[&[Claim<Entity<&str, &str>>]; 2]] = &[
                 [
                     &[
-                        [Exa("andrew"), Exa("claims"), Any("c")],
-                        [Any("c"), Exa("subject"), Any("s")],
-                        [Any("c"), Exa("property"), Any("p")],
-                        [Any("c"), Exa("object"), Any("o")],
+                        [Bound("andrew"), Bound("claims"), Unbound("c")],
+                        [Unbound("c"), Bound("subject"), Unbound("s")],
+                        [Unbound("c"), Bound("property"), Unbound("p")],
+                        [Unbound("c"), Bound("object"), Unbound("o")],
                     ],
-                    &[[Any("s"), Any("p"), Any("o")]],
+                    &[[Unbound("s"), Unbound("p"), Unbound("o")]],
                 ],
                 [
                     &[
-                        [Any("person_a"), Exa("is"), Exa("awesome")],
-                        [Any("person_a"), Exa("friendswith"), Any("person_b")],
+                        [Unbound("person_a"), Bound("is"), Bound("awesome")],
+                        [
+                            Unbound("person_a"),
+                            Bound("friendswith"),
+                            Unbound("person_b"),
+                        ],
                     ],
-                    &[[Any("person_b"), Exa("is"), Exa("awesome")]],
+                    &[[Unbound("person_b"), Bound("is"), Bound("awesome")]],
                 ],
                 [
-                    &[[Any("person_a"), Exa("friendswith"), Any("person_b")]],
-                    &[[Any("person_b"), Exa("friendswith"), Any("person_a")]],
+                    &[[
+                        Unbound("person_a"),
+                        Bound("friendswith"),
+                        Unbound("person_b"),
+                    ]],
+                    &[[
+                        Unbound("person_b"),
+                        Bound("friendswith"),
+                        Unbound("person_a"),
+                    ]],
                 ],
             ];
             ru.iter()
@@ -541,15 +553,15 @@ mod test {
             .collect();
         let rules = decl_rules(&[
             [
-                &[[Any("a"), Exa(parent), Any("b")]],
-                &[[Any("a"), Exa(ancestor), Any("b")]],
+                &[[Unbound("a"), Bound(parent), Unbound("b")]],
+                &[[Unbound("a"), Bound(ancestor), Unbound("b")]],
             ],
             [
                 &[
-                    [Any("a"), Exa(ancestor), Any("b")],
-                    [Any("b"), Exa(ancestor), Any("c")],
+                    [Unbound("a"), Bound(ancestor), Unbound("b")],
+                    [Unbound("b"), Bound(ancestor), Unbound("c")],
                 ],
-                &[[Any("a"), Exa(ancestor), Any("c")]],
+                &[[Unbound("a"), Bound(ancestor), Unbound("c")]],
             ],
         ]);
         let composite_claims = vec![
@@ -585,8 +597,8 @@ mod test {
             ["nachos", "are", "food"],
         ];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Exa("nachos"), Exa("are"), Exa("tasty")]],
-            &[[Exa("nachos"), Exa("are"), Exa("food")]],
+            &[[Bound("nachos"), Bound("are"), Bound("tasty")]],
+            &[[Bound("nachos"), Bound("are"), Bound("food")]],
         ]]);
         let composite_claims = vec![["nachos", "are", "food"]];
         let proof = prove(&facts, &composite_claims, &rules).unwrap();
@@ -596,7 +608,8 @@ mod test {
     #[test]
     fn unconditional_rule() {
         let facts: Vec<Claim<&str>> = vec![];
-        let rules = decl_rules::<&str, &str>(&[[&[], &[[Exa("nachos"), Exa("are"), Exa("food")]]]]);
+        let rules =
+            decl_rules::<&str, &str>(&[[&[], &[[Bound("nachos"), Bound("are"), Bound("food")]]]]);
         let composite_claims = vec![["nachos", "are", "food"]];
         let proof = prove(&facts, &composite_claims, &rules).unwrap();
         assert_eq!(

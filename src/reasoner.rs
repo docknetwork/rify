@@ -201,7 +201,7 @@ impl TripleStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{inc, Any, Exa};
+    use crate::common::{inc, Bound, Unbound};
     use crate::reasoner::{Triple, TripleStore};
     use crate::rule::{Entity, LowRule, Rule};
     use crate::translator::Translator;
@@ -343,15 +343,15 @@ mod tests {
         // load rules
         let rules: &[[&[Claim<Entity<&str, &str>>]; 2]] = &[
             [
-                &[[Any("a"), Exa(&parent), Any("b")]],
-                &[[Any("a"), Exa(&ancestor), Any("b")]],
+                &[[Unbound("a"), Bound(&parent), Unbound("b")]],
+                &[[Unbound("a"), Bound(&ancestor), Unbound("b")]],
             ],
             [
                 &[
-                    [Any("a"), Exa(&ancestor), Any("b")],
-                    [Any("b"), Exa(&ancestor), Any("c")],
+                    [Unbound("a"), Bound(&ancestor), Unbound("b")],
+                    [Unbound("b"), Bound(&ancestor), Unbound("c")],
                 ],
-                &[[Any("a"), Exa(&ancestor), Any("c")]],
+                &[[Unbound("a"), Bound(&ancestor), Unbound("c")]],
             ],
         ];
         let mut rrs: Vec<LowRule> = rules.iter().map(|rule| low_rule(*rule, &tran)).collect();

@@ -22,17 +22,17 @@ use alloc::collections::BTreeSet;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use rify::{
 ///     prove, validate, Valid,
-///     Entity::{Any, Exactly},
+///     Entity::{Bound, Unbound},
 ///     Rule, RuleApplication,
 /// };
 ///
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = Rule::create(
 ///     vec![
-///         [Any("a"), Exactly("is"), Exactly("awesome")], // if someone is awesome
-///         [Any("a"), Exactly("score"), Any("s")],    // and they have some score
+///         [Unbound("a"), Bound("is"), Bound("awesome")], // if someone is awesome
+///         [Unbound("a"), Bound("score"), Unbound("s")],  // and they have some score
 ///     ],
-///     vec![[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
+///     vec![[Unbound("a"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
 /// )?;
 ///
 /// let proof = vec![
@@ -107,15 +107,15 @@ impl From<BadRuleApplication> for Invalid {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::{decl_rules, Any, Exa};
+    use crate::common::{decl_rules, Bound, Unbound};
     use crate::prove::prove;
 
     #[test]
     fn irrelevant_facts_ignored() {
         let facts: Vec<Claim<&str>> = vec![["tacos", "are", "tasty"], ["nachos", "are", "tasty"]];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Exa("nachos"), Exa("are"), Exa("tasty")]],
-            &[[Exa("nachos"), Exa("are"), Exa("food")]],
+            &[[Bound("nachos"), Bound("are"), Bound("tasty")]],
+            &[[Bound("nachos"), Bound("are"), Bound("food")]],
         ]]);
         let composite_claims = vec![["nachos", "are", "food"]];
         let proof = prove(&facts, &composite_claims, &rules).unwrap();
@@ -133,12 +133,12 @@ mod test {
     fn bad_rule_application() {
         let facts: Vec<Claim<&str>> = vec![["a", "a", "a"]];
         let rules_v1 = decl_rules::<&str, &str>(&[[
-            &[[Any("a"), Exa("a"), Exa("a")]],
-            &[[Exa("b"), Exa("b"), Exa("b")]],
+            &[[Unbound("a"), Bound("a"), Bound("a")]],
+            &[[Bound("b"), Bound("b"), Bound("b")]],
         ]]);
         let rules_v2 = decl_rules::<&str, &str>(&[[
-            &[[Exa("a"), Exa("a"), Exa("a")]],
-            &[[Exa("b"), Exa("b"), Exa("b")]],
+            &[[Bound("a"), Bound("a"), Bound("a")]],
+            &[[Bound("b"), Bound("b"), Bound("b")]],
         ]]);
         let composite_claims = vec![["b", "b", "b"]];
         let proof = prove(&facts, &composite_claims, &rules_v1).unwrap();
@@ -150,8 +150,8 @@ mod test {
     fn no_such_rule() {
         let facts: Vec<Claim<&str>> = vec![["a", "a", "a"]];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Exa("a"), Exa("a"), Exa("a")]],
-            &[[Exa("b"), Exa("b"), Exa("b")]],
+            &[[Bound("a"), Bound("a"), Bound("a")]],
+            &[[Bound("b"), Bound("b"), Bound("b")]],
         ]]);
         let composite_claims = vec![["b", "b", "b"]];
         let proof = prove(&facts, &composite_claims, &rules).unwrap();
@@ -197,26 +197,26 @@ mod test {
         let rules = decl_rules(&[
             [
                 &[
-                    [Exa("andrew"), Exa("claims"), Any("c")],
-                    [Any("c"), Exa("subject"), Any("s")],
-                    [Any("c"), Exa("property"), Any("p")],
-                    [Any("c"), Exa("object"), Any("o")],
+                    [Bound("andrew"), Bound("claims"), Unbound("c")],
+                    [Unbound("c"), Bound("subject"), Unbound("s")],
+                    [Unbound("c"), Bound("property"), Unbound("p")],
+                    [Unbound("c"), Bound("object"), Unbound("o")],
                 ],
-                &[[Any("s"), Any("p"), Any("o")]],
+                &[[Unbound("s"), Unbound("p"), Unbound("o")]],
             ],
             [
-                &[[Any("a"), Exa("favoriteFood"), Any("f")]],
+                &[[Unbound("a"), Bound("favoriteFood"), Unbound("f")]],
                 &[
-                    [Any("a"), Exa("likes"), Any("f")],
-                    [Any("f"), Exa("type"), Exa("food")],
+                    [Unbound("a"), Bound("likes"), Unbound("f")],
+                    [Unbound("f"), Bound("type"), Bound("food")],
                 ],
             ],
             [
                 &[
-                    [Any("f"), Exa("type"), Exa("food")],
-                    [Any("a"), Exa("alergyFree"), Exa("true")],
+                    [Unbound("f"), Bound("type"), Bound("food")],
+                    [Unbound("a"), Bound("alergyFree"), Bound("true")],
                 ],
-                &[[Any("a"), Exa("mayEat"), Any("f")]],
+                &[[Unbound("a"), Bound("mayEat"), Unbound("f")]],
             ],
         ]);
         let facts: &[Claim<&str>] = &[

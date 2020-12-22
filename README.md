@@ -20,9 +20,9 @@ struct Rule {
 
 enum Entity {
     /// A a named variable with an unknown value.
-    Any(String),
+    Unbound(String),
     /// A literal RDF node.
-    Exactly(RdfNode),
+    Bound(RdfNode),
 }
 
 // actual definitions of these types are templated but this is the gist
@@ -37,17 +37,17 @@ Two functions are central to this library: `prove` and `validate`.
 
 use rify::{
     prove,
-    Entity::{Any, Exactly},
+    Entity::{Unbound, Bound},
     Rule, RuleApplication,
 };
 
 // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 let awesome_score_axiom = Rule::create(
     vec![
-        [Any("a"), Exactly("is"), Exactly("awesome")], // if someone is awesome
-        [Any("a"), Exactly("score"), Any("s")],    // and they have some score
+        [Unbound("a"), Bound("is"), Bound("awesome")], // if someone is awesome
+        [Unbound("a"), Bound("score"), Unbound("s")],    // and they have some score
     ],
-    vec![[Any("a"), Exactly("score"), Exactly("awesome")]], // then they must have an awesome score
+    vec![[Unbound("a"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
 )?;
 
 assert_eq!(
@@ -71,7 +71,6 @@ assert_eq!(
 
 use rify::{
     prove, validate, Valid,
-    Entity::{Any, Exactly},
     Rule, RuleApplication,
 };
 

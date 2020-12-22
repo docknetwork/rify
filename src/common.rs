@@ -17,7 +17,7 @@ pub fn inc(a: &mut u32) -> u32 {
 #[cfg(test)]
 mod test_util {
     use crate::rule::Entity;
-    pub use crate::rule::Entity::{Any, Exactly as Exa};
+    pub use crate::rule::Entity::{Bound, Unbound};
     use crate::rule::Rule;
     use crate::Claim;
     use core::fmt::Debug;

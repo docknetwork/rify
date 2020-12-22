@@ -130,8 +130,8 @@ pub(super) enum Entity {
 impl From<Entity> for crate::Entity<String, String> {
     fn from(ent: Entity) -> Self {
         match ent {
-            Entity::Unbound(unbound) => crate::Entity::Any(unbound),
-            Entity::Bound(bound) => crate::Entity::Exactly(bound),
+            Entity::Unbound(unbound) => crate::Entity::Unbound(unbound),
+            Entity::Bound(bound) => crate::Entity::Bound(bound),
         }
     }
 }

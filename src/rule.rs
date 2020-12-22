@@ -23,28 +23,30 @@ pub(crate) struct LowRule {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Entity<Unbound, Bound> {
-    Any(Unbound),
-    Exactly(Bound),
+    Unbound(Unbound),
+    Bound(Bound),
 }
 
 impl<Unbound, Bound> Entity<Unbound, Bound> {
     pub fn as_unbound(&self) -> Option<&Unbound> {
         match self {
-            Entity::Any(s) => Some(s),
-            Entity::Exactly(_) => None,
+            Entity::Unbound(s) => Some(s),
+            Entity::Bound(_) => None,
         }
     }
 
     pub fn as_bound(&self) -> Option<&Bound> {
         match self {
-            Entity::Any(_) => None,
-            Entity::Exactly(s) => Some(s),
+            Entity::Unbound(_) => None,
+            Entity::Bound(s) => Some(s),
         }
     }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 // invariants held:
 //   unbound names may not exists in `then` unless they exist also in `if_all`
 pub struct Rule<Unbound, Bound> {
@@ -127,8 +129,8 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
         // gets the local name for a human_name
         let local_name = |entity: &Entity<Unbound, Bound>| -> u32 {
             match entity {
-                Entity::Any(s) => unbound_map[s],
-                Entity::Exactly(s) => bound_map[s],
+                Entity::Unbound(s) => unbound_map[s],
+                Entity::Bound(s) => bound_map[s],
             }
         };
         // converts a human readable restriction list to a list of locally scoped machine oriented
@@ -220,7 +222,7 @@ pub struct NoTranslation<T>(T);
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::{Any, Exa};
+    use crate::common::{Bound, Unbound};
     use core::iter::FromIterator;
 
     #[test]
@@ -230,7 +232,7 @@ mod test {
         // ?a should be a separate entity from <a>
 
         let rule = Rule::<&str, &str> {
-            if_all: vec![[Any("a"), Exa("a"), Any("b")]],
+            if_all: vec![[Unbound("a"), Bound("a"), Unbound("b")]],
             then: vec![],
         };
         let trans: Translator<&str> = ["a"].iter().cloned().collect();
@@ -249,8 +251,8 @@ mod test {
 
         {
             let rulea = Rule::<u16, &str> {
-                if_all: vec![[Any(0xa), Exa("parent"), Any(0xb)]],
-                then: vec![[Any(0xa), Exa("ancestor"), Any(0xb)]],
+                if_all: vec![[Unbound(0xa), Bound("parent"), Unbound(0xb)]],
+                then: vec![[Unbound(0xa), Bound("ancestor"), Unbound(0xb)]],
             };
 
             let re_rulea = rulea.lower(&trans).unwrap();
@@ -294,10 +296,10 @@ mod test {
         {
             let ruleb = Rule::<&str, &str> {
                 if_all: vec![
-                    [Any("a"), Exa("ancestor"), Any("b")],
-                    [Any("b"), Exa("ancestor"), Any("c")],
+                    [Unbound("a"), Bound("ancestor"), Unbound("b")],
+                    [Unbound("b"), Bound("ancestor"), Unbound("c")],
                 ],
-                then: vec![[Any("a"), Exa("ancestor"), Any("c")]],
+                then: vec![[Unbound("a"), Bound("ancestor"), Unbound("c")]],
             };
 
             let re_ruleb = ruleb.lower(&trans).unwrap();
@@ -355,13 +357,13 @@ mod test {
     fn lower_no_translation_err() {
         let trans = Translator::<&str>::from_iter(vec![]);
 
-        let r = Rule::create(vec![[Any("a"), Exa("unknown"), Any("b")]], vec![]).unwrap();
+        let r = Rule::create(vec![[Unbound("a"), Bound("unknown"), Unbound("b")]], vec![]).unwrap();
         let err = r.lower(&trans).unwrap_err();
         assert_eq!(err, NoTranslation(&"unknown"));
 
         let r = Rule::<&str, &str>::create(
             vec![],
-            vec![[Exa("unknown"), Exa("unknown"), Exa("unknown")]],
+            vec![[Bound("unknown"), Bound("unknown"), Bound("unknown")]],
         )
         .unwrap();
         let err = r.lower(&trans).unwrap_err();
@@ -370,7 +372,8 @@ mod test {
 
     #[test]
     fn create_invalid() {
-        Rule::<&str, &str>::create(vec![], vec![[Any("a"), Any("a"), Any("a")]]).unwrap_err();
+        Rule::<&str, &str>::create(vec![], vec![[Unbound("a"), Unbound("a"), Unbound("a")]])
+            .unwrap_err();
 
         // Its unfortunate that this one is illeagal but I have yet to find a way around the
         // limitation. Can you figure out how to do this safely?
@@ -385,22 +388,22 @@ mod test {
         let ret = Rule::<&str, &str>::create(
             vec![
                 // if [super? claims [minor? mayclaim pred?]]
-                [Any("super"), Exa("claims"), Any("claim1")],
-                [Any("claim1"), Exa("subject"), Any("minor")],
-                [Any("claim1"), Exa("predicate"), Exa("mayclaim")],
-                [Any("claim1"), Exa("object"), Any("pred")],
+                [Unbound("super"), Bound("claims"), Unbound("claim1")],
+                [Unbound("claim1"), Bound("subject"), Unbound("minor")],
+                [Unbound("claim1"), Bound("predicate"), Bound("mayclaim")],
+                [Unbound("claim1"), Bound("object"), Unbound("pred")],
                 // and [minor? claims [s? pred? o?]]
-                [Any("minor"), Exa("claims"), Any("claim2")],
-                [Any("claim2"), Exa("subject"), Any("s")],
-                [Any("claim2"), Exa("predicate"), Any("pred")],
-                [Any("claim2"), Exa("object"), Any("o")],
+                [Unbound("minor"), Bound("claims"), Unbound("claim2")],
+                [Unbound("claim2"), Bound("subject"), Unbound("s")],
+                [Unbound("claim2"), Bound("predicate"), Unbound("pred")],
+                [Unbound("claim2"), Bound("object"), Unbound("o")],
             ],
             vec![
                 // then [super? claims [s? pred? o?]]
-                [Any("super"), Exa("claims"), Any("claim3")],
-                [Any("claim3"), Exa("subject"), Any("s")],
-                [Any("claim3"), Exa("predicate"), Any("pred")],
-                [Any("claim3"), Exa("object"), Any("o")],
+                [Unbound("super"), Bound("claims"), Unbound("claim3")],
+                [Unbound("claim3"), Bound("subject"), Unbound("s")],
+                [Unbound("claim3"), Bound("predicate"), Unbound("pred")],
+                [Unbound("claim3"), Bound("object"), Unbound("o")],
             ],
         );
         assert_eq!(ret, Err(InvalidRule::UnboundImplied("claim3")));
@@ -443,5 +446,86 @@ mod test {
         // even though alice only intendend to let [alice claims [charlie maysit chair]]
         //
         // Question: Is it possible to guard against these tricky premises?
+    }
+
+    #[test]
+    fn serde() {
+        #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+        enum RdfNode {
+            Blank(String),
+            Iri(String),
+            Literal {
+                value: String,
+                datatype: String,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                language: Option<String>,
+            },
+        }
+
+        let jsonrule = serde_json::json![{
+            "if_all": [
+                [
+                    { "Unbound": "pig" },
+                    { "Bound": { "Iri": "https://example.com/Ability" } },
+                    { "Bound": { "Iri": "https://example.com/Flight" } },
+                ],
+                [
+                    { "Unbound": "pig" },
+                    { "Bound": { "Iri": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" } },
+                    { "Bound": { "Iri": "https://example.com/Pig" } },
+                ],
+            ],
+            "then": [
+                [
+                    { "Bound": { "Iri": "did:dock:bddap" } },
+                    { "Bound": { "Iri": "http://xmlns.com/foaf/spec/#term_firstName" } },
+                    {
+                        "Bound": {
+                            "Literal": {
+                                "value": "Gorgadon",
+                                "datatype": "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral",
+                            },
+                        },
+                    },
+                ],
+            ],
+        }];
+
+        let rule = Rule::<String, RdfNode> {
+            if_all: vec![
+                [
+                    Entity::Unbound("pig".to_string()),
+                    Entity::Bound(RdfNode::Iri("https://example.com/Ability".to_string())),
+                    Entity::Bound(RdfNode::Iri("https://example.com/Flight".to_string())),
+                ],
+                [
+                    Entity::Unbound("pig".to_string()),
+                    Entity::Bound(RdfNode::Iri(
+                        "http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string(),
+                    )),
+                    Entity::Bound(RdfNode::Iri("https://example.com/Pig".to_string())),
+                ],
+            ],
+            then: vec![[
+                Entity::Bound(RdfNode::Iri("did:dock:bddap".to_string())),
+                Entity::Bound(RdfNode::Iri(
+                    "http://xmlns.com/foaf/spec/#term_firstName".to_string(),
+                )),
+                Entity::Bound(RdfNode::Literal {
+                    value: "Gorgadon".to_string(),
+                    datatype: "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral".to_string(),
+                    language: None,
+                }),
+            ]],
+        };
+
+        assert_eq!(
+            &serde_json::from_value::<Rule::<String, RdfNode>>(jsonrule.clone()).unwrap(),
+            &rule
+        );
+        assert_eq!(
+            &jsonrule,
+            &serde_json::to_value::<Rule::<String, RdfNode>>(rule).unwrap()
+        );
     }
 }
