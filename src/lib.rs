@@ -6,6 +6,7 @@ pub mod lang_bindings;
 mod mapstack;
 mod prove;
 mod reasoner;
+mod qreasoner;
 mod rule;
 mod translator;
 mod validate;
