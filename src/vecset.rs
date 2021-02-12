@@ -1,6 +1,7 @@
 use core::cmp::Ordering;
 
 /// A sorted Vec of unique elements.
+#[derive(Default)]
 pub struct VecSet<T> {
     sorted: Vec<T>,
 }
