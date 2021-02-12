@@ -91,7 +91,7 @@ impl Reasoner {
         .all(|wn| wn[0] == wn[1]));
     }
 
-    /// Find in this tuple store all possible valid instantiations of rule. Report the
+    /// Find in this store all possible valid instantiations of rule. Report the
     /// instantiations through a callback.
     /// TODO: This function is recursive, but not tail recursive. Rules that are too long may
     ///       consume the stack.
@@ -101,13 +101,14 @@ impl Reasoner {
         instantiations: &mut Instantiations,
         cb: &mut impl FnMut(&Instantiations),
     ) {
-        let (strictest, mut less_strict) =
-            if let Some(s) = self.pop_strictest_requirement(rule, instantiations) {
-                s
-            } else {
+        let st = self.pop_strictest_requirement(rule, instantiations);
+        let (strictest, mut less_strict) = match st {
+            Some(s) => s,
+            None => {
                 cb(instantiations);
                 return;
-            };
+            }
+        };
 
         // For every possible concrete instantiation fulfilling the requirement, bind the slots
         // in the requirement to the instantiation then recurse.
@@ -253,3 +254,117 @@ impl_quad_order!(Ospg, (o, s, p, g,));
 impl_quad_order!(Gspo, (g, s, p, o,));
 impl_quad_order!(Gpos, (g, p, o, s,));
 impl_quad_order!(Gosp, (g, o, s, p,));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::collections::BTreeMap;
+
+    pub fn inc(a: &mut usize) -> usize {
+        *a += 1;
+        *a - 1
+    }
+
+    #[test]
+    fn ancestry_raw() {
+        #[derive(Clone, Debug)]
+        struct Rule {
+            if_all: Vec<Quad>,
+            then: Vec<Quad>,
+            inst: Instantiations,
+        }
+
+        // entities
+        let mut count = 0usize;
+        let parent = Prop(inc(&mut count));
+        let ancestor = Prop(inc(&mut count));
+        let nodes: Vec<_> = (0..4).map(|_| inc(&mut count)).collect();
+        let default_graph = Grap(inc(&mut count));
+
+        // initial facts: (n0 parent n1 dg), (n1 parent n2 dg), ... (n[l-2] parent n[l-1] dg)
+        //                (n[l-1] parent n0 dg)
+        // dg: default_graph
+        let facts = nodes
+            .iter()
+            .zip(nodes.iter().cycle().skip(1))
+            .map(|(a, b)| Quad {
+                s: Subj(*a),
+                p: parent,
+                o: Obje(*b),
+                g: default_graph,
+            });
+
+        // rules: (?a parent ?b ?g) -> (?a ancestor ?b ?g)
+        //        (?a ancestor ?b ?g) and (?b ancestor ?c ?g) -> (?a ancestor ?c ?g)
+        let rules = vec![
+            // (?a parent ?b ?g) -> (?a ancestor ?b ?g)
+            Rule {
+                if_all: quads(&[[0, 1, 2, 4]]),
+                then: quads(&[[0, 3, 2, 4]]),
+                inst: [(1, parent.0), (3, ancestor.0)].iter().cloned().collect(),
+            },
+            // (?a ancestor ?b ?g) and (?b ancestor ?c ?g) -> (?a ancestor ?c ?g)
+            Rule {
+                if_all: quads(&[[1, 0, 2, 4], [2, 0, 3, 4]]),
+                then: quads(&[[1, 0, 3, 4]]),
+                inst: [(0, ancestor.0)].iter().cloned().collect(),
+            },
+        ];
+
+        // expected logical result: for all a for all b (a ancestor b)
+        let mut ts = Reasoner::default();
+        for fact in facts {
+            ts.insert(fact);
+        }
+
+        // This test only does one round of reasoning, no forward chaining. We will need a forward
+        // chaining test eventually.
+        let mut results = Vec::<BTreeMap<usize, usize>>::new();
+        for rule in rules {
+            let Rule {
+                mut if_all,
+                then: _,
+                mut inst,
+            } = rule.clone();
+            ts.apply(&mut if_all, &mut inst, &mut |inst| {
+                results.push(inst.as_ref().clone())
+            });
+        }
+
+        // We expect the first rule, (?a parent ?b ?g) -> (?a ancestor ?b ?g), to activate once for
+        // every parent relation.
+        // The second rule, (?a ancestor ?b ?g) and (?b ancestor ?c ?g) -> (?a ancestor ?c ?g),
+        // should not activate because results from application of first rule have not been added
+        // to the rdf store so there are there are are not yet any ancestry relations present.
+        let mut expected_intantiations: Vec<BTreeMap<usize, usize>> = nodes
+            .iter()
+            .zip(nodes.iter().cycle().skip(1))
+            .map(|(a, b)| {
+                [
+                    (0, *a),
+                    (1, parent.0),
+                    (2, *b),
+                    (3, ancestor.0),
+                    (4, default_graph.0),
+                ]
+                .iter()
+                .cloned()
+                .collect()
+            })
+            .collect();
+        results.sort();
+        expected_intantiations.sort();
+        assert_eq!(results, expected_intantiations);
+    }
+
+    fn quads(qs: &[[usize; 4]]) -> Vec<Quad> {
+        qs.iter()
+            .map(|[s, p, o, g]| Quad {
+                s: Subj(*s),
+                p: Prop(*p),
+                o: Obje(*o),
+                g: Grap(*g),
+            })
+            .collect()
+    }
+}
