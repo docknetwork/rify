@@ -269,12 +269,12 @@ impl_quad_order!(Gosp, (g, o, s, p,));
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::qrule::{
+        Entity::{self, Bound, Unbound},
+        LowRule, Rule,
+    };
     use crate::translator::Translator;
-    use crate::Entity;
-    use crate::Entity::Bound;
-    use crate::Entity::Unbound;
-    use alloc::collections::BTreeMap;
-    use core::iter::once;
+    use alloc::collections::{BTreeMap, BTreeSet};
 
     pub fn inc(a: &mut usize) -> usize {
         *a += 1;
@@ -384,105 +384,124 @@ mod tests {
             .collect()
     }
 
-    // #[test]
-    // fn ancestry() {
-    //     // load data
-    //     let parent = "parent";
-    //     let ancestor = "ancestor";
-    //     let default_graph = "default_graph";
-    //     let nodes: Vec<_> = (0..10).map(|a| format!("n{}", a)).collect();
+    #[test]
+    fn ancestry() {
+        // load data
+        let parent = "parent";
+        let ancestor = "ancestor";
+        let default_graph = "default_graph";
+        let nodes: Vec<_> = (0..10).map(|a| format!("n{}", a)).collect();
 
-    //     // create a translator to map human readable names to u32
-    //     let tran: Translator<&str> = nodes
-    //         .iter()
-    //         .map(AsRef::as_ref)
-    //         .chain([parent, ancestor, default_graph].iter().cloned())
-    //         .collect();
+        // create a translator to map human readable names to u32
+        let tran: Translator<&str> = nodes
+            .iter()
+            .map(AsRef::as_ref)
+            .chain([parent, ancestor, default_graph].iter().cloned())
+            .collect();
 
-    //     // load rules
-    //     let rules: &[[&[[Entity<&str, &str>; 4]]; 2]] = &[
-    //         [
-    //             &[[Unbound("a"), Bound(parent), Unbound("b"), Unbound("g")]],
-    //             &[[Unbound("a"), Bound(ancestor), Unbound("b"), Unbound("g")]],
-    //         ],
-    //         [
-    //             &[
-    //                 [Unbound("a"), Bound(ancestor), Unbound("b"), Unbound("g")],
-    //                 [Unbound("b"), Bound(ancestor), Unbound("c"), Unbound("g")],
-    //             ],
-    //             &[[Unbound("a"), Bound(ancestor), Unbound("c"), Unbound("g")]],
-    //         ],
-    //     ];
-    //     let mut rrs: Vec<LowRule> = rules.iter().map(|rule| low_rule(*rule, &tran)).collect();
+        // load rules
+        let rules: &[[&[[Entity<&str, &str>; 4]]; 2]] = &[
+            [
+                &[[Unbound("a"), Bound(parent), Unbound("b"), Unbound("g")]],
+                &[[Unbound("a"), Bound(ancestor), Unbound("b"), Unbound("g")]],
+            ],
+            [
+                &[
+                    [Unbound("a"), Bound(ancestor), Unbound("b"), Unbound("g")],
+                    [Unbound("b"), Bound(ancestor), Unbound("c"), Unbound("g")],
+                ],
+                &[[Unbound("a"), Bound(ancestor), Unbound("c"), Unbound("g")]],
+            ],
+        ];
+        let mut rrs: Vec<LowRule> = rules.iter().map(|rule| low_rule(*rule, &tran)).collect();
 
-    //     // load data into reasoner
-    //     let mut ts = TripleStore::new();
-    //     // initial facts: (n_a parent n_a+1), (n_last parent n_0)
-    //     let initial_claims: Vec<(&str, &str, &str)> = nodes
-    //         .iter()
-    //         .zip(nodes.iter().cycle().skip(1))
-    //         .map(|(a, b)| (a.as_str(), parent, b.as_str()))
-    //         .collect();
-    //     for (s, p, o) in &initial_claims {
-    //         ts.insert(Triple::from_tuple(
-    //             tran.forward(s).unwrap(),
-    //             tran.forward(p).unwrap(),
-    //             tran.forward(o).unwrap(),
-    //         ));
-    //     }
+        // load data into reasoner
+        let mut ts = Reasoner::default();
+        // initial facts: (n_a parent n_a+1), (n_last parent n_0)
+        let initial_claims: Vec<(&str, &str, &str, &str)> = nodes
+            .iter()
+            .zip(nodes.iter().cycle().skip(1))
+            .map(|(a, b)| (a.as_str(), parent, b.as_str(), default_graph))
+            .collect();
+        for (s, p, o, g) in &initial_claims {
+            ts.insert(
+                [
+                    tran.forward(s).unwrap() as usize,
+                    tran.forward(p).unwrap() as usize,
+                    tran.forward(o).unwrap() as usize,
+                    tran.forward(g).unwrap() as usize,
+                ]
+                .into(),
+            );
+        }
 
-    //     // reason
-    //     loop {
-    //         let mut to_add = BTreeSet::<Triple>::new();
-    //         for rule in rrs.iter_mut() {
-    //             let mut if_all = &mut rule.if_all;
-    //             let mut inst = &mut rule.inst;
-    //             let then = &rule.then;
-    //             ts.apply(&mut if_all, &mut inst, &mut |inst| {
-    //                 for implied in then {
-    //                     let inst = inst.as_ref();
-    //                     let new_triple = Triple::from_tuple(
-    //                         inst[&implied.subject.0],
-    //                         inst[&implied.property.0],
-    //                         inst[&implied.object.0],
-    //                     );
-    //                     if !ts.contains(&new_triple) {
-    //                         to_add.insert(new_triple);
-    //                     }
-    //                 }
-    //             });
-    //         }
-    //         if to_add.is_empty() {
-    //             break;
-    //         }
-    //         for new in to_add.into_iter() {
-    //             ts.insert(new);
-    //         }
-    //     }
+        // reason
+        loop {
+            let mut to_add = BTreeSet::<Quad>::new();
+            for rule in rrs.iter_mut() {
+                let mut if_all = &mut rule.if_all;
+                let mut inst = &mut rule.inst;
+                let then = &rule.then;
+                ts.apply(&mut if_all, &mut inst, &mut |inst| {
+                    for implied in then {
+                        let inst = inst.as_ref();
+                        let new: Quad = [
+                            inst[&implied.s.0],
+                            inst[&implied.p.0],
+                            inst[&implied.o.0],
+                            inst[&implied.g.0],
+                        ]
+                        .into();
+                        if !ts.contains(&new) {
+                            to_add.insert(new);
+                        }
+                    }
+                });
+            }
+            if to_add.is_empty() {
+                break;
+            }
+            for new in to_add.into_iter() {
+                ts.insert(new);
+            }
+        }
 
-    //     // convert results back to human readable tuples
-    //     let claims: BTreeSet<(&str, &str, &str)> = ts
-    //         .claims
-    //         .iter()
-    //         .map(|triple| {
-    //             (
-    //                 *tran.back(triple.subject.0).unwrap(),
-    //                 *tran.back(triple.property.0).unwrap(),
-    //                 *tran.back(triple.object.0).unwrap(),
-    //             )
-    //         })
-    //         .collect();
+        // convert results back to human readable tuples
+        let claims: BTreeSet<(&str, &str, &str, &str)> = ts
+            .claims
+            .iter()
+            .map(|triple| {
+                (
+                    *tran.back(triple.s.0 as u32).unwrap(),
+                    *tran.back(triple.p.0 as u32).unwrap(),
+                    *tran.back(triple.o.0 as u32).unwrap(),
+                    *tran.back(triple.g.0 as u32).unwrap(),
+                )
+            })
+            .collect();
 
-    //     // assert results
-    //     let expected_claims: BTreeSet<(&str, &str, &str)> = initial_claims
-    //         .iter()
-    //         .cloned()
-    //         .chain(nodes.iter().flat_map(|a| {
-    //             nodes
-    //                 .iter()
-    //                 .map(move |b| (a.as_str(), ancestor, b.as_str()))
-    //         }))
-    //         .collect();
-    //     assert_eq!(claims, expected_claims);
-    // }
+        // assert results
+        let expected_claims: BTreeSet<(&str, &str, &str, &str)> = pairs(nodes.iter())
+            .map(|(a, b)| (a.as_str(), ancestor, b.as_str(), default_graph))
+            .chain(initial_claims.iter().cloned())
+            .collect();
+        assert_eq!(claims, expected_claims);
+    }
+
+    /// panics if an unbound name is implied
+    /// panics if rule contains bound names that are not present in Translator
+    fn low_rule(rule: [&[[Entity<&str, &str>; 4]]; 2], trans: &Translator<&str>) -> LowRule {
+        let [if_all, then] = rule;
+        Rule::<&str, &str>::create(if_all.to_vec(), then.to_vec())
+            .unwrap()
+            .lower(trans)
+            .unwrap()
+    }
+
+    fn pairs<'a, T: 'a + Clone, I: 'a + Iterator<Item = T> + Clone>(
+        inp: I,
+    ) -> impl 'a + Iterator<Item = (T, T)> {
+        inp.clone()
+            .flat_map(move |a| inp.clone().map(move |b| (a.clone(), b)))
+    }
 }
