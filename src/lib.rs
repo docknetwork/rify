@@ -8,6 +8,7 @@ mod prove;
 mod reasoner;
 mod qreasoner;
 mod rule;
+mod qrule;
 mod translator;
 mod validate;
 mod vecset;
