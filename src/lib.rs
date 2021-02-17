@@ -5,12 +5,14 @@ mod common;
 pub mod lang_bindings;
 mod mapstack;
 mod prove;
+mod qprove;
 mod reasoner;
 mod qreasoner;
 mod rule;
 mod qrule;
 mod translator;
 mod validate;
+mod qvalidate;
 mod vecset;
 
 pub use prove::{prove, RuleApplication};

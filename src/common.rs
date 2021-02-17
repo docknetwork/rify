@@ -29,6 +29,14 @@ mod test_util {
             .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
             .collect()
     }
+
+    pub fn qdecl_rules<Unbound: Ord + Debug + Clone, Bound: Ord + Clone>(
+        rs: &[[&[[crate::qrule::Entity<Unbound, Bound>; 4]]; 2]],
+    ) -> Vec<crate::qrule::Rule<Unbound, Bound>> {
+        rs.iter()
+            .map(|[ifa, then]| crate::qrule::Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
+            .collect()
+    }
 }
 #[cfg(test)]
 pub use test_util::*;
