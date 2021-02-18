@@ -73,8 +73,8 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
     pub(crate) fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
         // There are three types of name at play here.
         // - human names are represented as Entities
-        // - local names are local to the rule we are creating. they are represented as u32
-        // - global names are from the translator. they are represented as u32
+        // - local names are local to the rule we are creating. they are represented as usize
+        // - global names assigned by Translator. they are represented as usize
 
         // assign local names to each human name
         // local names will be in a continous range from 0.
@@ -104,7 +104,7 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
             "no names slots are wasted"
         );
         debug_assert_eq!(
-            next_local as usize,
+            next_local,
             unbound_map.values().chain(bound_map.values()).count(),
             "no duplicate assignments"
         );
@@ -138,9 +138,8 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
             inst: bound_map
                 .iter()
                 .map(|(human_name, local_name)| {
-                    let global_name: u32 =
-                        tran.forward(human_name).ok_or(NoTranslation(*human_name))?;
-                    Ok((*local_name, global_name as usize))
+                    let global_name = tran.forward(human_name).ok_or(NoTranslation(*human_name))?;
+                    Ok((*local_name, global_name))
                 })
                 .collect::<Result<_, _>>()?,
         })
@@ -155,14 +154,7 @@ impl<'a, Unbound: Ord, Bound> Rule<Unbound, Bound> {
             .iter()
             .flatten()
             .filter_map(Entity::as_unbound)
-            .filter_map(move |unbound| {
-                if listed.contains(unbound) {
-                    None
-                } else {
-                    listed.insert(unbound);
-                    Some(unbound)
-                }
-            })
+            .filter(move |unbound| listed.insert(unbound))
     }
 }
 
@@ -276,7 +268,7 @@ mod test {
                         .inst
                         .as_ref()
                         .get(&local_name)
-                        .map(|global_name: &usize| trans.back(*global_name as u32).unwrap().clone())
+                        .map(|global_name| trans.back(*global_name).unwrap().clone())
                 })
                 .collect();
             assert_eq!(
@@ -331,7 +323,7 @@ mod test {
                         .inst
                         .as_ref()
                         .get(&local_name)
-                        .map(|global_name: &usize| trans.back(*global_name as u32).unwrap().clone())
+                        .map(|global_name| trans.back(*global_name).unwrap().clone())
                 })
                 .collect();
             assert_eq!(

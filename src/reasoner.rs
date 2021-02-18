@@ -388,7 +388,7 @@ mod tests {
         let default_graph = "default_graph";
         let nodes: Vec<_> = (0..10).map(|a| format!("n{}", a)).collect();
 
-        // create a translator to map human readable names to u32
+        // create a translator to map human readable names to unique id
         let tran: Translator<&str> = nodes
             .iter()
             .map(AsRef::as_ref)
@@ -422,10 +422,10 @@ mod tests {
         for [s, p, o, g] in &initial_claims {
             ts.insert(
                 [
-                    tran.forward(s).unwrap() as usize,
-                    tran.forward(p).unwrap() as usize,
-                    tran.forward(o).unwrap() as usize,
-                    tran.forward(g).unwrap() as usize,
+                    tran.forward(s).unwrap(),
+                    tran.forward(p).unwrap(),
+                    tran.forward(o).unwrap(),
+                    tran.forward(g).unwrap(),
                 ]
                 .into(),
             );
@@ -468,10 +468,10 @@ mod tests {
             .iter()
             .map(|Quad { s, p, o, g }| {
                 [
-                    *tran.back(s.0 as u32).unwrap(),
-                    *tran.back(p.0 as u32).unwrap(),
-                    *tran.back(o.0 as u32).unwrap(),
-                    *tran.back(g.0 as u32).unwrap(),
+                    *tran.back(s.0).unwrap(),
+                    *tran.back(p.0).unwrap(),
+                    *tran.back(o.0).unwrap(),
+                    *tran.back(g.0).unwrap(),
                 ]
             })
             .collect();

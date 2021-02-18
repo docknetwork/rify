@@ -39,9 +39,9 @@ pub fn prove(
     rules: Box<[JsValue]>,
 ) -> Result<Box<[JsValue]>, JsValue> {
     let proof = prove_(
-        deser_list(premises)?,
-        deser_list(to_prove)?,
-        deser_list(rules)?,
+        deser_list(&premises)?,
+        deser_list(&to_prove)?,
+        deser_list(&rules)?,
     )?;
     Ok(ser_list(&proof))
 }
@@ -118,7 +118,7 @@ pub(super) fn prove_(
 /// ```
 #[wasm_bindgen]
 pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> Result<JsValue, JsValue> {
-    let valid = validate_(deser_list(rules)?, deser_list(proof)?)?;
+    let valid = validate_(deser_list(&rules)?, deser_list(&proof)?)?;
     Ok(ser(&valid))
 }
 
@@ -185,7 +185,7 @@ impl From<crate::validate::Invalid> for Error {
 }
 
 /// Deserialize a list of js values into a list of rust values
-fn deser_list<T: DeserializeOwned>(a: Box<[JsValue]>) -> Result<Vec<T>, Error> {
+fn deser_list<T: DeserializeOwned>(a: &[JsValue]) -> Result<Vec<T>, Error> {
     a.iter().map(|b| deser::<T>(b)).collect()
 }
 
@@ -232,7 +232,7 @@ impl RuleUnchecked {
     }
 }
 
-fn convert_claim<T, A: Into<T>>(c: [A; 4]) -> [T; 4] {
-    let [s, p, o, g] = c;
+fn convert_claim<T, A: Into<T>>(claim: [A; 4]) -> [T; 4] {
+    let [s, p, o, g] = claim;
     [s.into(), p.into(), o.into(), g.into()]
 }

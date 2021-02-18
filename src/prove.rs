@@ -66,10 +66,10 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
     let as_raw = |[s, p, o, g]: &[Bound; 4]| -> Option<Quad> {
         Some(
             [
-                tran.forward(&s)? as usize,
-                tran.forward(&p)? as usize,
-                tran.forward(&o)? as usize,
-                tran.forward(&g)? as usize,
+                tran.forward(&s)?,
+                tran.forward(&p)?,
+                tran.forward(&o)?,
+                tran.forward(&g)?,
             ]
             .into(),
         )
@@ -121,10 +121,10 @@ fn low_prove(
                 let ins = inst.as_ref();
                 for implied in &rr.then {
                     let new_quad = [
-                        ins[&implied.s.0] as usize,
-                        ins[&implied.p.0] as usize,
-                        ins[&implied.o.0] as usize,
-                        ins[&implied.g.0] as usize,
+                        ins[&implied.s.0],
+                        ins[&implied.p.0],
+                        ins[&implied.o.0],
+                        ins[&implied.g.0],
                     ]
                     .into();
                     if !rs.contains(&new_quad) {
@@ -162,27 +162,20 @@ fn low_prove(
 /// As this function populates the output. It removes corresponding arguments from the input.
 /// The reason being that a single argument does not need to be proved twice. Once is is
 /// proved, it can be treated as a premise.
-fn recall_proof<'a>(
+fn recall_proof(
     // the globally scoped quad for which to find arguments
     to_prove: &Quad,
     arguments: &mut BTreeMap<Quad, LowRuleApplication>,
     rules: &[LowRule],
     outp: &mut Vec<LowRuleApplication>,
 ) {
-    let to_global_scope = |rra: &LowRuleApplication, locally_scoped_entity: usize| -> usize {
-        let concrete: Option<usize> = rules[rra.rule_index]
-            .inst
-            .as_ref()
-            .get(&locally_scoped_entity)
-            .copied();
-        let found: Option<usize> = rra
-            .instantiations
-            .get(&locally_scoped_entity)
-            .map(|f| *f as usize);
+    let to_global_scope = |rra: &LowRuleApplication, locally_scoped: usize| -> usize {
+        let concrete = rules[rra.rule_index].inst.as_ref().get(&locally_scoped);
+        let found = rra.instantiations.get(&locally_scoped);
         if let (Some(c), Some(f)) = (concrete, found) {
             debug_assert_eq!(c, f);
         }
-        concrete.or(found).unwrap()
+        *concrete.or(found).unwrap()
     };
 
     if let Some(application) = arguments.remove(to_prove) {
@@ -256,7 +249,7 @@ impl LowRuleApplication {
         for unbound_human in original_rule.cononical_unbound() {
             let unbound_local: usize = uhul[unbound_human];
             let bound_global: usize = self.instantiations[&unbound_local];
-            let bound_human: &Bound = trans.back(bound_global as u32).unwrap();
+            let bound_human: &Bound = trans.back(bound_global).unwrap();
             instantiations.push(bound_human.clone());
         }
 
