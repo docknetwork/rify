@@ -7,10 +7,6 @@ pub struct VecSet<T> {
 }
 
 impl<T> VecSet<T> {
-    pub fn new() -> Self {
-        Self { sorted: Vec::new() }
-    }
-
     /// Insert a new element while maintaining the ordering defined by the comparator function.
     /// If the element already exists in the set according to the comparator it will not be
     /// inserted.
@@ -59,7 +55,7 @@ mod test {
     fn vecset() {
         let ordering = |a: &u8, b: &u8| -> Ordering { a.cmp(&b) };
         let sub_ordering = |a: &u8, b: &u8| -> Ordering { (a / 2).cmp(&(b / 2)) };
-        let mut vs: VecSet<u8> = VecSet::new();
+        let mut vs: VecSet<u8> = VecSet::default();
         for n in &[32u8, 5, 2, 2, 4, 3, 2, 23, 24, 253] {
             vs.insert(*n, ordering);
         }

@@ -1,8 +1,8 @@
 extern crate wasm_bindgen;
 
+use crate::prove::RuleApplication;
 use crate::rule::InvalidRule;
-use crate::RuleApplication;
-use crate::{Claim, Rule};
+use crate::rule::Rule;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 
@@ -47,12 +47,13 @@ pub fn prove(
 }
 
 pub(super) fn prove_(
-    premises: Vec<Claim<String>>,
-    to_prove: Vec<Claim<String>>,
+    premises: Vec<[String; 4]>,
+    to_prove: Vec<[String; 4]>,
     rules: Vec<RuleUnchecked>,
 ) -> Result<Vec<RuleApplication<String>>, Error> {
     let rules = RuleUnchecked::check_all(rules)?;
-    let proof = crate::prove(&premises, &to_prove, &rules).map_err(Into::<Error>::into)?;
+    let proof = crate::prove::prove::<String, String>(&premises, &to_prove, &rules)
+        .map_err(Into::<Error>::into)?;
     Ok(proof)
 }
 
@@ -113,7 +114,7 @@ pub(super) fn prove_(
 /// }
 ///
 /// // After verifying all the assumptions in the proof are true, we know that the
-/// // triples in valid.implied are true with respect to the provided rules.
+/// // quads in valid.implied are true with respect to the provided rules.
 /// ```
 #[wasm_bindgen]
 pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> Result<JsValue, JsValue> {
@@ -126,7 +127,7 @@ pub(super) fn validate_(
     proof: Vec<RuleApplication<String>>,
 ) -> Result<crate::validate::Valid<String>, Error> {
     let rules = RuleUnchecked::check_all(rules)?;
-    let valid = crate::validate::validate(&rules, &proof)?;
+    let valid = crate::validate::validate::<String, String>(&rules, &proof)?;
     Ok(valid)
 }
 
@@ -136,11 +137,11 @@ pub(super) enum Entity {
     Bound(String),
 }
 
-impl From<Entity> for crate::Entity<String, String> {
+impl From<Entity> for crate::rule::Entity<String, String> {
     fn from(ent: Entity) -> Self {
         match ent {
-            Entity::Unbound(unbound) => crate::Entity::Unbound(unbound),
-            Entity::Bound(bound) => crate::Entity::Bound(bound),
+            Entity::Unbound(unbound) => crate::rule::Entity::Unbound(unbound),
+            Entity::Bound(bound) => crate::rule::Entity::Bound(bound),
         }
     }
 }
@@ -214,8 +215,8 @@ fn ser<T: serde::Serialize>(a: &T) -> JsValue {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuleUnchecked {
-    pub(super) if_all: Vec<Claim<Entity>>,
-    pub(super) then: Vec<Claim<Entity>>,
+    pub(super) if_all: Vec<[Entity; 4]>,
+    pub(super) then: Vec<[Entity; 4]>,
 }
 
 impl RuleUnchecked {
@@ -231,7 +232,7 @@ impl RuleUnchecked {
     }
 }
 
-fn convert_claim<T, A: Into<T>>(c: Claim<A>) -> Claim<T> {
-    let [s, p, o] = c;
-    [s.into(), p.into(), o.into()]
+fn convert_claim<T, A: Into<T>>(c: [A; 4]) -> [T; 4] {
+    let [s, p, o, g] = c;
+    [s.into(), p.into(), o.into(), g.into()]
 }
