@@ -1,0 +1,25 @@
+on: [pull_request]
+
+name: CI
+
+jobs:
+  all:
+    name: Normal Build, Test Suite, Test JS bindings, Rustfmt, Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      - uses: extractions/setup-just@v1
+      - uses: jetli/wasm-pack-action@v0.3.0
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '13.x'
+      - run: cargo build
+      - run: cargo test
+      - run: just js-test
+      - run: cargo clippy -- -D warnings
+      - run: cargo fmt --all -- --check
