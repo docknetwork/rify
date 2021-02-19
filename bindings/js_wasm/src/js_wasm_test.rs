@@ -1,6 +1,6 @@
-use super::js_wasm::Entity;
-use super::js_wasm::RuleUnchecked;
-use crate::prove::RuleApplication;
+use super::Entity;
+use super::RuleUnchecked;
+use rify::RuleApplication;
 use serde_json::json;
 
 type RulesInput = Vec<RuleUnchecked>;
@@ -10,8 +10,8 @@ type ProofInput = Vec<RuleApplication<String>>;
 /// this dummy function ensures the above types are up-to-date
 /// with the actual interface
 fn _types_correct(r: RulesInput, c: ClaimsInput, p: ProofInput) -> ProofInput {
-    super::js_wasm::validate_(r.clone(), p).unwrap();
-    super::js_wasm::prove_(c.clone(), c, r).unwrap()
+    super::validate_(r.clone(), p).unwrap();
+    super::prove_(c.clone(), c, r).unwrap()
 }
 
 #[test]
