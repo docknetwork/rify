@@ -21,7 +21,7 @@ js-test-light:
   cd bindings/js_wasm/binding_tests
   yarn test
 
-# run js tests
+# run js tests (called from ci)
 js-test:
   just js
   just js-test-init
