@@ -14,6 +14,10 @@ jobs:
           override: true
           components: rustfmt, clippy
       - uses: extractions/setup-just@v1
+      - uses: jetli/wasm-pack-action@v0.3.0
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '13.x'
       - run: cargo build
       - run: cargo test
       - run: just js-test
