@@ -38,48 +38,48 @@ function e(str) {
 
 // a credential in Explicit Ethos form
 const CREDENTIAL_EE = [
-  ["root_authority", "claims", "_:0"],
-  ["_:0", "subject", "root_authority"],
-  ["_:0", "predicate", "defersTo"],
-  ["_:0", "object", "issuer"],
-  ["issuer", "claims", "_:1"],
-  ["_:1", "subject", "bobert"],
-  ["_:1", "predicate", "mayPurchase"],
-  ["_:1", "object", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle"],
+  ["root_authority", "claims", "_:0", "default_graph"],
+  ["_:0", "subject", "root_authority", "default_graph"],
+  ["_:0", "predicate", "defersTo", "default_graph"],
+  ["_:0", "object", "issuer", "default_graph"],
+  ["issuer", "claims", "_:1", "default_graph"],
+  ["_:1", "subject", "bobert", "default_graph"],
+  ["_:1", "predicate", "mayPurchase", "default_graph"],
+  ["_:1", "object", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle", "default_graph"],
 ];
 const RULES = [
   // to claim deference is deference
   {
     if_all: [
-      [a("super"), e("claims"), a("claim1")],
-      [a("claim1"), e("subject"), a("super")],
-      [a("claim1"), e("predicate"), e("defersTo")],
-      [a("claim1"), e("object"), a("minor")],
+      [a("super"), e("claims"), a("claim1"), e("default_graph")],
+      [a("claim1"), e("subject"), a("super"), e("default_graph")],
+      [a("claim1"), e("predicate"), e("defersTo"), e("default_graph")],
+      [a("claim1"), e("object"), a("minor"), e("default_graph")],
     ],
     then: [
-      [a("super"), e("defersTo"), a("minor")],
+      [a("super"), e("defersTo"), a("minor"), e("default_graph")],
     ],
   },
   // defered entity may make claims on behalf of the deferer
   {
     if_all: [
-      [a("super"), e("defersTo"), a("minor")],
-      [a("minor"), e("claims"), a("claim1")],
+      [a("super"), e("defersTo"), a("minor"), e("default_graph")],
+      [a("minor"), e("claims"), a("claim1"), e("default_graph")],
     ],
     then: [
-      [a("super"), e("claims"), a("claim1")],
+      [a("super"), e("claims"), a("claim1"), e("default_graph")],
     ],
   },
   // the verifier trusts root_authority
   {
     if_all: [
-      [e("root_authority"), e("claims"), a("c")],
-      [a("c"), e("subject"), a("s")],
-      [a("c"), e("predicate"), a("p")],
-      [a("c"), e("object"), a("o")],
+      [e("root_authority"), e("claims"), a("c"), e("default_graph")],
+      [a("c"), e("subject"), a("s"), e("default_graph")],
+      [a("c"), e("predicate"), a("p"), e("default_graph")],
+      [a("c"), e("object"), a("o"), e("default_graph")],
     ],
     then: [
-      [a("s"), a("p"), a("o")],
+      [a("s"), a("p"), a("o"), e("default_graph")],
     ],
   }
 ];
@@ -93,7 +93,7 @@ tests([
   ['The proof is the output of the theorem prover (DCK-69).', () => {
     // call `prove` then use the output of `prove` to verify the ruleset
     const composite_claims = [
-      ["bobert", "mayPurchase", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle"]
+      ["bobert", "mayPurchase", "http://www.heppnetz.de/ontologies/vso/ns#Vehicle", "default_graph"]
     ];
     let proof = prove(CREDENTIAL_EE, composite_claims, RULES);
     expect(proof).to.deep.equal([
@@ -118,27 +118,29 @@ tests([
     let valid = validate(RULES, proof);
     expect(valid).to.deep.equal({
       assumed: [
-        ['_:0', 'object', 'issuer'],
-        ['_:0', 'predicate', 'defersTo'],
-        ['_:0', 'subject', 'root_authority'],
+        ['_:0', 'object', 'issuer', 'default_graph'],
+        ['_:0', 'predicate', 'defersTo', 'default_graph'],
+        ['_:0', 'subject', 'root_authority', 'default_graph'],
         [
           '_:1',
           'object',
-          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle'
+          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle',
+          'default_graph'
         ],
-        ['_:1', 'predicate', 'mayPurchase'],
-        ['_:1', 'subject', 'bobert'],
-        ['issuer', 'claims', '_:1'],
-        ['root_authority', 'claims', '_:0']
+        ['_:1', 'predicate', 'mayPurchase', 'default_graph'],
+        ['_:1', 'subject', 'bobert', 'default_graph'],
+        ['issuer', 'claims', '_:1', 'default_graph'],
+        ['root_authority', 'claims', '_:0', 'default_graph']
       ],
       implied: [
         [
           'bobert',
           'mayPurchase',
-          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle'
+          'http://www.heppnetz.de/ontologies/vso/ns#Vehicle',
+          'default_graph'
         ],
-        ['root_authority', 'claims', '_:1'],
-        ['root_authority', 'defersTo', 'issuer']
+        ['root_authority', 'claims', '_:1', 'default_graph'],
+        ['root_authority', 'defersTo', 'issuer', 'default_graph']
       ]
     });
   }],
@@ -167,19 +169,19 @@ tests([
     // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
     let awesome_score_axiom = {
       if_all: [
-        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
-        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }, { Bound: "default_graph" }],
+        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }, { Bound: "default_graph" }],
       ],
       then: [
-        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }, { Bound: "default_graph" }]
       ],
     };
     let proof = prove(
       [
-        ["you", "score", "unspecified"],
-        ["you", "is", "awesome"],
+        ["you", "score", "unspecified", "default_graph"],
+        ["you", "is", "awesome", "default_graph"],
       ],
-      [["you", "score", "awesome"]],
+      [["you", "score", "awesome", "default_graph"]],
       [awesome_score_axiom],
     );
     expect(proof).to.deep.equal([{
@@ -192,16 +194,16 @@ tests([
     // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
     let awesome_score_axiom = {
       if_all: [
-        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
-        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }, { Bound: "default_graph" }],
+        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }, { Bound: "default_graph" }],
       ],
       then: [
-        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }, { Bound: "default_graph" }]
       ],
     };
     let known_facts = [
-      ["you", "score", "unspecified"],
-      ["you", "is", "awesome"],
+      ["you", "score", "unspecified", "default_graph"],
+      ["you", "is", "awesome", "default_graph"],
     ];
     let valid = validate(
       [awesome_score_axiom],
@@ -212,11 +214,11 @@ tests([
     );
     expect(valid).to.deep.equal({
       assumed: [
-        ["you", "is", "awesome"],
-        ["you", "score", "unspecified"],
+        ["you", "is", "awesome", "default_graph"],
+        ["you", "score", "unspecified", "default_graph"],
       ],
       implied: [
-        ["you", "score", "awesome"],
+        ["you", "score", "awesome", "default_graph"],
       ]
     });
 
@@ -228,7 +230,7 @@ tests([
     }
 
     // After verifying all the assumptions in the proof are true, we know that the
-    // triples in valid.implied are true with respect to the provided rules.
+    // quads in valid.implied are true with respect to the provided rules.
   }],
 ]);
 

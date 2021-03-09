@@ -1,9 +1,7 @@
-use crate::reasoner::{Triple, TripleStore};
+use crate::reasoner::{Quad, Reasoner};
 use crate::rule::{Entity, LowRule, Rule};
 use crate::translator::Translator;
-use crate::Claim;
 use alloc::collections::{BTreeMap, BTreeSet};
-use core::convert::TryInto;
 use core::fmt::{Debug, Display};
 
 /// Locate a proof of some composite claims given the provied premises and rules.
@@ -19,19 +17,31 @@ use core::fmt::{Debug, Display};
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = Rule::create(
 ///     vec![
-///         [Unbound("a"), Bound("is"), Bound("awesome")], // if someone is awesome
-///         [Unbound("a"), Bound("score"), Unbound("s")],  // and they have some score
+///         // if someone is awesome
+///         [Unbound("a"), Bound("is"), Bound("awesome"), Bound("default_graph")],
+///         // and they have some score
+///         [Unbound("a"), Bound("score"), Unbound("s"), Bound("default_graph")],
 ///     ],
-///     vec![[Unbound("a"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
+///     vec![
+///         // then they must have an awesome score
+///         [Unbound("a"), Bound("score"), Bound("awesome"), Bound("default_graph")]
+///     ],
 /// )?;
 ///
 /// assert_eq!(
 ///     prove::<&str, &str>(
-///         &[["you", "score", "unspecified"], ["you", "is", "awesome"]],
-///         &[["you", "score", "awesome"]],
+///         // list of already known facts (premises)
+///         &[
+///             ["you", "score", "unspecified", "default_graph"],
+///             ["you", "is", "awesome", "default_graph"]
+///         ],
+///         // the thing we want to prove
+///         &[["you", "score", "awesome", "default_graph"]],
+///         // ordered list of logical rules
 ///         &[awesome_score_axiom]
 ///     )?,
 ///     &[
+///         // the desired statement is be proven by instatiating the `awesome_score_axiom`
 ///         // (you is awesome) ∧ (you score unspecified) -> (you score awesome)
 ///         RuleApplication {
 ///             rule_index: 0,
@@ -43,8 +53,8 @@ use core::fmt::{Debug, Display};
 /// # }
 /// ```
 pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
-    premises: &'a [Claim<Bound>],
-    to_prove: &'a [Claim<Bound>],
+    premises: &'a [[Bound; 4]],
+    to_prove: &'a [[Bound; 4]],
     rules: &'a [Rule<Unbound, Bound>],
 ) -> Result<Vec<RuleApplication<Bound>>, CantProve> {
     let tran: Translator<Bound> = rules
@@ -53,15 +63,19 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
         .chain(premises.iter().flatten())
         .cloned()
         .collect();
-    let as_raw = |[s, p, o]: &Claim<Bound>| -> Option<Triple> {
-        Some(Triple::from_tuple(
-            tran.forward(&s)?,
-            tran.forward(&p)?,
-            tran.forward(&o)?,
-        ))
+    let as_raw = |[s, p, o, g]: &[Bound; 4]| -> Option<Quad> {
+        Some(
+            [
+                tran.forward(&s)?,
+                tran.forward(&p)?,
+                tran.forward(&o)?,
+                tran.forward(&g)?,
+            ]
+            .into(),
+        )
     };
-    let lpremises: Vec<Triple> = premises.iter().map(|spo| as_raw(spo).unwrap()).collect();
-    let lto_prove: Vec<Triple> = to_prove
+    let lpremises: Vec<Quad> = premises.iter().map(|spo| as_raw(spo).unwrap()).collect();
+    let lto_prove: Vec<Quad> = to_prove
         .iter()
         .map(as_raw)
         .collect::<Option<_>>()
@@ -84,41 +98,43 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
 }
 
 fn low_prove(
-    premises: &[Triple],
-    to_prove: &[Triple],
+    premises: &[Quad],
+    to_prove: &[Quad],
     rules: &[LowRule],
 ) -> Result<Vec<LowRuleApplication>, CantProve> {
-    let mut ts = TripleStore::new();
+    let mut rs = Reasoner::default();
     for prem in premises {
-        ts.insert(prem.clone());
+        rs.insert(prem.clone());
     }
 
-    // statement (Triple) is proved by applying rule (LowRuleApplication)
-    let mut arguments: BTreeMap<Triple, LowRuleApplication> = BTreeMap::new();
+    // statement (Quad) is proved by applying rule (LowRuleApplication)
+    let mut arguments: BTreeMap<Quad, LowRuleApplication> = BTreeMap::new();
 
     // reason
     loop {
-        if to_prove.iter().all(|tp| ts.contains(tp)) {
+        if to_prove.iter().all(|tp| rs.contains(tp)) {
             break;
         }
-        let mut to_add = BTreeSet::<Triple>::new();
+        let mut to_add = BTreeSet::<Quad>::new();
         for (rule_index, rr) in rules.iter().enumerate() {
-            ts.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
+            rs.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
                 let ins = inst.as_ref();
                 for implied in &rr.then {
-                    let new_triple = Triple::from_tuple(
-                        ins[&implied.subject.0],
-                        ins[&implied.property.0],
-                        ins[&implied.object.0],
-                    );
-                    if !ts.contains(&new_triple) {
+                    let new_quad = [
+                        ins[&implied.s.0],
+                        ins[&implied.p.0],
+                        ins[&implied.o.0],
+                        ins[&implied.g.0],
+                    ]
+                    .into();
+                    if !rs.contains(&new_quad) {
                         arguments
-                            .entry(new_triple.clone())
+                            .entry(new_quad.clone())
                             .or_insert_with(|| LowRuleApplication {
                                 rule_index,
                                 instantiations: ins.clone(),
                             });
-                        to_add.insert(new_triple);
+                        to_add.insert(new_quad);
                     }
                 }
             });
@@ -127,11 +143,11 @@ fn low_prove(
             break;
         }
         for new in to_add.into_iter() {
-            ts.insert(new);
+            rs.insert(new);
         }
     }
 
-    if !to_prove.iter().all(|tp| ts.contains(tp)) {
+    if !to_prove.iter().all(|tp| rs.contains(tp)) {
         return Err(CantProve::ExhaustedSearchSpace);
     }
 
@@ -142,40 +158,38 @@ fn low_prove(
     Ok(ret)
 }
 
-// TODO, this fuction is not tail recursive
-/// As this function populates the output. It removes correspond arguments from the input.
+// this function is not tail recursive
+/// As this function populates the output. It removes corresponding arguments from the input.
 /// The reason being that a single argument does not need to be proved twice. Once is is
 /// proved, it can be treated as a premise.
-fn recall_proof<'a>(
-    // globally scoped triple to prove
-    to_prove: &Triple,
-    arguments: &mut BTreeMap<Triple, LowRuleApplication>,
+fn recall_proof(
+    // the globally scoped quad for which to find arguments
+    to_prove: &Quad,
+    arguments: &mut BTreeMap<Quad, LowRuleApplication>,
     rules: &[LowRule],
     outp: &mut Vec<LowRuleApplication>,
 ) {
-    let to_global_scope = |rra: &LowRuleApplication, locally_scoped_entity: u32| -> u32 {
-        let concrete = rules[rra.rule_index]
-            .inst
-            .as_ref()
-            .get(&locally_scoped_entity);
-        let found = rra.instantiations.get(&locally_scoped_entity);
-        debug_assert!(if let (Some(c), Some(f)) = (concrete, found) {
-            c == f
-        } else {
-            true
-        });
+    let to_global_scope = |rra: &LowRuleApplication, locally_scoped: usize| -> usize {
+        let concrete = rules[rra.rule_index].inst.as_ref().get(&locally_scoped);
+        let found = rra.instantiations.get(&locally_scoped);
+        if let (Some(c), Some(f)) = (concrete, found) {
+            debug_assert_eq!(c, f);
+        }
         *concrete.or(found).unwrap()
     };
 
     if let Some(application) = arguments.remove(to_prove) {
         // for every required sub-statement, recurse
-        for triple in &rules[application.rule_index].if_all {
+        for quad in &rules[application.rule_index].if_all {
+            let Quad { s, p, o, g } = quad;
             recall_proof(
-                &Triple::from_tuple(
-                    to_global_scope(&application, triple.subject.0),
-                    to_global_scope(&application, triple.property.0),
-                    to_global_scope(&application, triple.object.0),
-                ),
+                &[
+                    to_global_scope(&application, s.0),
+                    to_global_scope(&application, p.0),
+                    to_global_scope(&application, o.0),
+                    to_global_scope(&application, g.0),
+                ]
+                .into(),
                 arguments,
                 rules,
                 outp,
@@ -208,7 +222,7 @@ impl std::error::Error for CantProve {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct LowRuleApplication {
     rule_index: usize,
-    instantiations: BTreeMap<u32, u32>,
+    instantiations: BTreeMap<usize, usize>,
 }
 
 impl LowRuleApplication {
@@ -226,16 +240,16 @@ impl LowRuleApplication {
         let mut instantiations = Vec::new();
 
         // unbound_human -> unbound_local
-        let uhul: BTreeMap<&Unbound, u32> = original_rule
+        let uhul: BTreeMap<&Unbound, usize> = original_rule
             .cononical_unbound()
             .enumerate()
-            .map(|(a, b)| (b, a.try_into().unwrap()))
+            .map(|(i, a)| (a, i))
             .collect();
 
         for unbound_human in original_rule.cononical_unbound() {
-            let unbound_local = uhul[unbound_human];
-            let bound_global = self.instantiations[&unbound_local];
-            let bound_human = trans.back(bound_global).unwrap();
+            let unbound_local: usize = uhul[unbound_human];
+            let bound_global: usize = self.instantiations[&unbound_local];
+            let bound_human: &Bound = trans.back(bound_global).unwrap();
             instantiations.push(bound_human.clone());
         }
 
@@ -259,14 +273,14 @@ impl<Bound: Clone> RuleApplication<Bound> {
     pub(crate) fn assumptions_when_applied<'a, Unbound: Ord + Clone>(
         &'a self,
         rule: &'a Rule<Unbound, Bound>,
-    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+    ) -> Result<impl Iterator<Item = [Bound; 4]> + 'a, BadRuleApplication> {
         self.bind_claims(rule, rule.if_all())
     }
 
     pub(crate) fn implications_when_applied<'a, Unbound: Ord + Clone>(
         &'a self,
         rule: &'a Rule<Unbound, Bound>,
-    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+    ) -> Result<impl Iterator<Item = [Bound; 4]> + 'a, BadRuleApplication> {
         self.bind_claims(rule, rule.then())
     }
 
@@ -274,8 +288,8 @@ impl<Bound: Clone> RuleApplication<Bound> {
     fn bind_claims<'a, Unbound: Ord + Clone>(
         &'a self,
         rule: &'a Rule<Unbound, Bound>,
-        claims: &'a [Claim<Entity<Unbound, Bound>>],
-    ) -> Result<impl Iterator<Item = Claim<Bound>> + 'a, BadRuleApplication> {
+        claims: &'a [[Entity<Unbound, Bound>; 4]],
+    ) -> Result<impl Iterator<Item = [Bound; 4]> + 'a, BadRuleApplication> {
         let cannon: BTreeMap<&Unbound, usize> = rule
             .cononical_unbound()
             .enumerate()
@@ -296,14 +310,15 @@ impl<Bound: Clone> RuleApplication<Bound> {
 /// panics if an unbound entity is not registered in map
 /// panics if the canonical index of unbound (according to map) is too large to index instanitations
 fn bind_claim<Unbound: Ord, Bound: Clone>(
-    [s, p, o]: Claim<Entity<Unbound, Bound>>,
+    [s, p, o, g]: [Entity<Unbound, Bound>; 4],
     map: &BTreeMap<&Unbound, usize>,
     instanitations: &[Bound],
-) -> Claim<Bound> {
+) -> [Bound; 4] {
     [
         bind_entity(s, map, instanitations),
         bind_entity(p, map, instanitations),
         bind_entity(o, map, instanitations),
+        bind_entity(g, map, instanitations),
     ]
 }
 
@@ -329,15 +344,17 @@ pub struct BadRuleApplication;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::{decl_rules, inc};
-    use crate::rule::Entity::{Bound, Unbound};
+    use crate::common::decl_rules;
+    use crate::common::inc;
+    use crate::rule::Entity::{Bound as B, Unbound as U};
     use crate::validate::validate;
     use crate::validate::Valid;
 
     #[test]
     fn novel_name() {
         assert_eq!(
-            prove::<&str, &str>(&[], &[["andrew", "score", "awesome"]], &[]).unwrap_err(),
+            prove::<&str, &str>(&[], &[["andrew", "score", "awesome", "default_graph"]], &[])
+                .unwrap_err(),
             CantProve::NovelName
         );
     }
@@ -346,29 +363,29 @@ mod test {
     fn search_space_exhausted() {
         let err = prove::<&str, &str>(
             &[
-                ["score", "score", "score"],
-                ["andrew", "andrew", "andrew"],
-                ["awesome", "awesome", "awesome"],
+                ["score", "score", "score", "default_graph"],
+                ["andrew", "andrew", "andrew", "default_graph"],
+                ["awesome", "awesome", "awesome", "default_graph"],
             ],
-            &[["andrew", "score", "awesome"]],
+            &[["andrew", "score", "awesome", "default_graph"]],
             &[],
         )
         .unwrap_err();
         assert_eq!(err, CantProve::ExhaustedSearchSpace);
         let err = prove::<&str, &str>(
             &[
-                ["score", "score", "score"],
-                ["andrew", "andrew", "andrew"],
-                ["awesome", "awesome", "awesome"],
-                ["backflip", "backflip", "backflip"],
-                ["ability", "ability", "ability"],
+                ["score", "score", "score", "default_graph"],
+                ["andrew", "andrew", "andrew", "default_graph"],
+                ["awesome", "awesome", "awesome", "default_graph"],
+                ["backflip", "backflip", "backflip", "default_graph"],
+                ["ability", "ability", "ability", "default_graph"],
             ],
-            &[["andrew", "score", "awesome"]],
+            &[["andrew", "score", "awesome", "default_graph"]],
             &[
                 Rule::create(vec![], vec![]).unwrap(),
                 Rule::create(
-                    vec![[Unbound("a"), Bound("ability"), Bound("backflip")]],
-                    vec![[Unbound("a"), Bound("score"), Bound("awesome")]],
+                    vec![[U("a"), B("ability"), B("backflip"), U("g")]],
+                    vec![[U("a"), B("score"), B("awesome"), U("g")]],
                 )
                 .unwrap(),
             ],
@@ -381,8 +398,8 @@ mod test {
     fn prove_already_stated() {
         assert_eq!(
             prove::<&str, &str>(
-                &[["doggo", "score", "11"]],
-                &[["doggo", "score", "11"]],
+                &[["doggo", "score", "11", "default_graph"]],
+                &[["doggo", "score", "11", "default_graph"]],
                 &[]
             )
             .unwrap(),
@@ -396,16 +413,19 @@ mod test {
         // (?boi, is, awesome) ∧ (?boi, score, ?s) -> (?boi score, awesome)
         let awesome_score_axiom = Rule::create(
             vec![
-                [Unbound("boi"), Bound("is"), Bound("awesome")], // if someone is awesome
-                [Unbound("boi"), Bound("score"), Unbound("s")],  // and they have some score
+                [U("boi"), B("is"), B("awesome"), U("g")], // if someone is awesome
+                [U("boi"), B("score"), U("s"), U("g")],    // and they have some score
             ],
-            vec![[Unbound("boi"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
+            vec![[U("boi"), B("score"), B("awesome"), U("g")]], // then they must have an awesome score
         )
         .unwrap();
         assert_eq!(
             prove::<&str, &str>(
-                &[["you", "score", "unspecified"], ["you", "is", "awesome"]],
-                &[["you", "score", "awesome"]],
+                &[
+                    ["you", "score", "unspecified", "default_graph"],
+                    ["you", "is", "awesome", "default_graph"]
+                ],
+                &[["you", "score", "awesome", "default_graph"]],
                 &[awesome_score_axiom]
             )
             .unwrap(),
@@ -413,9 +433,70 @@ mod test {
                 // (you is awesome) ∧ (you score unspecified) -> (you score awesome)
                 RuleApplication {
                     rule_index: 0,
-                    instantiations: vec!["you", "unspecified"]
+                    instantiations: vec!["you", "default_graph", "unspecified"]
                 }
             ]
+        );
+    }
+
+    #[test]
+    /// rules with a single unbound graphname cannot be applied accross graphnames
+    fn graph_separation() {
+        let awesome_score_axiom = Rule::create(
+            vec![
+                [U("boi"), B("is"), B("awesome"), U("g")],
+                [U("boi"), B("score"), U("s"), U("g")],
+            ],
+            vec![[U("boi"), B("score"), B("awesome"), U("g")]],
+        )
+        .unwrap();
+
+        prove::<&str, &str>(
+            &[
+                ["you", "score", "unspecified", "default_graph"],
+                ["you", "is", "awesome", "default_graph"],
+            ],
+            &[["you", "score", "awesome", "default_graph"]],
+            &[awesome_score_axiom.clone()],
+        )
+        .unwrap();
+        assert_eq!(
+            prove(
+                &[
+                    ["you", "score", "unspecified", "default_graph"],
+                    ["you", "is", "awesome", "other_graph"]
+                ],
+                &[["you", "score", "awesome", "default_graph"]],
+                &[awesome_score_axiom.clone()]
+            )
+            .unwrap_err(),
+            CantProve::ExhaustedSearchSpace
+        );
+        assert_eq!(
+            prove(
+                &[
+                    ["you", "score", "unspecified", "default_graph"],
+                    ["you", "is", "awesome", "other_graph"]
+                ],
+                &[["you", "score", "awesome", "other_graph"]],
+                &[awesome_score_axiom.clone()]
+            )
+            .unwrap_err(),
+            CantProve::ExhaustedSearchSpace
+        );
+        assert_eq!(
+            prove(
+                &[
+                    ["you", "score", "unspecified", "default_graph"],
+                    ["you", "is", "awesome", "default_graph"],
+                    // to prevent NovelName error:
+                    ["other_graph", "other_graph", "other_graph", "other_graph"],
+                ],
+                &[["you", "score", "awesome", "other_graph"]],
+                &[awesome_score_axiom.clone()]
+            )
+            .unwrap_err(),
+            CantProve::ExhaustedSearchSpace
         );
     }
 
@@ -441,38 +522,42 @@ mod test {
         // (soyoung is awesome)
         // (nick is awesome)
 
+        // the following rules operate only on the defualt graph
         let rules: Vec<Rule<&str, &str>> = {
-            let ru: &[[&[Claim<Entity<&str, &str>>]; 2]] = &[
+            let ru: &[[&[[Entity<&str, &str>; 4]]; 2]] = &[
                 [
                     &[
-                        [Bound("andrew"), Bound("claims"), Unbound("c")],
-                        [Unbound("c"), Bound("subject"), Unbound("s")],
-                        [Unbound("c"), Bound("property"), Unbound("p")],
-                        [Unbound("c"), Bound("object"), Unbound("o")],
+                        [B("andrew"), B("claims"), U("c"), B("default_graph")],
+                        [U("c"), B("subject"), U("s"), B("default_graph")],
+                        [U("c"), B("property"), U("p"), B("default_graph")],
+                        [U("c"), B("object"), U("o"), B("default_graph")],
                     ],
-                    &[[Unbound("s"), Unbound("p"), Unbound("o")]],
+                    &[[U("s"), U("p"), U("o"), B("default_graph")]],
                 ],
                 [
                     &[
-                        [Unbound("person_a"), Bound("is"), Bound("awesome")],
+                        [U("person_a"), B("is"), B("awesome"), B("default_graph")],
                         [
-                            Unbound("person_a"),
-                            Bound("friendswith"),
-                            Unbound("person_b"),
+                            U("person_a"),
+                            B("friendswith"),
+                            U("person_b"),
+                            B("default_graph"),
                         ],
                     ],
-                    &[[Unbound("person_b"), Bound("is"), Bound("awesome")]],
+                    &[[U("person_b"), B("is"), B("awesome"), B("default_graph")]],
                 ],
                 [
                     &[[
-                        Unbound("person_a"),
-                        Bound("friendswith"),
-                        Unbound("person_b"),
+                        U("person_a"),
+                        B("friendswith"),
+                        U("person_b"),
+                        B("default_graph"),
                     ]],
                     &[[
-                        Unbound("person_b"),
-                        Bound("friendswith"),
-                        Unbound("person_a"),
+                        U("person_b"),
+                        B("friendswith"),
+                        U("person_a"),
+                        B("default_graph"),
                     ]],
                 ],
             ];
@@ -480,19 +565,21 @@ mod test {
                 .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
                 .collect()
         };
-        let facts: &[Claim<&str>] = &[
-            ["soyoung", "friendswith", "nick"],
-            ["nick", "friendswith", "elina"],
-            ["elina", "friendswith", "sam"],
-            ["sam", "friendswith", "fausto"],
-            ["fausto", "friendswith", "lovesh"],
-            ["andrew", "claims", "_:claim1"],
-            ["_:claim1", "subject", "lovesh"],
-            ["_:claim1", "property", "is"],
-            ["_:claim1", "object", "awesome"],
+        let facts: &[[&str; 4]] = &[
+            ["soyoung", "friendswith", "nick", "default_graph"],
+            ["nick", "friendswith", "elina", "default_graph"],
+            ["elina", "friendswith", "sam", "default_graph"],
+            ["sam", "friendswith", "fausto", "default_graph"],
+            ["fausto", "friendswith", "lovesh", "default_graph"],
+            ["andrew", "claims", "_:claim1", "default_graph"],
+            ["_:claim1", "subject", "lovesh", "default_graph"],
+            ["_:claim1", "property", "is", "default_graph"],
+            ["_:claim1", "object", "awesome", "default_graph"],
         ];
-        let composite_claims: &[Claim<&str>] =
-            &[["soyoung", "is", "awesome"], ["nick", "is", "awesome"]];
+        let composite_claims: &[[&str; 4]] = &[
+            ["soyoung", "is", "awesome", "default_graph"],
+            ["nick", "is", "awesome", "default_graph"],
+        ];
         let expected_proof: Vec<RuleApplication<&str>> = {
             let ep: &[(usize, &[&str])] = &[
                 (0, &["_:claim1", "lovesh", "is", "awesome"]),
@@ -545,33 +632,35 @@ mod test {
         let mut next_uniq = 0u32;
         let parent = inc(&mut next_uniq);
         let ancestor = inc(&mut next_uniq);
+        let default_graph = inc(&mut next_uniq);
         let nodes: Vec<u32> = (0usize..10).map(|_| inc(&mut next_uniq)).collect();
-        let facts: Vec<Claim<u32>> = nodes
+        let facts: Vec<[u32; 4]> = nodes
             .iter()
             .zip(nodes.iter().cycle().skip(1))
-            .map(|(a, b)| [*a, parent, *b])
+            .map(|(a, b)| [*a, parent, *b, default_graph])
             .collect();
         let rules = decl_rules(&[
             [
-                &[[Unbound("a"), Bound(parent), Unbound("b")]],
-                &[[Unbound("a"), Bound(ancestor), Unbound("b")]],
+                &[[U("a"), B(parent), U("b"), B(default_graph)]],
+                &[[U("a"), B(ancestor), U("b"), B(default_graph)]],
             ],
             [
                 &[
-                    [Unbound("a"), Bound(ancestor), Unbound("b")],
-                    [Unbound("b"), Bound(ancestor), Unbound("c")],
+                    [U("a"), B(ancestor), U("b"), B(default_graph)],
+                    [U("b"), B(ancestor), U("c"), B(default_graph)],
                 ],
-                &[[Unbound("a"), Bound(ancestor), Unbound("c")]],
+                &[[U("a"), B(ancestor), U("c"), B(default_graph)]],
             ],
         ]);
         let composite_claims = vec![
-            [nodes[0], ancestor, *nodes.last().unwrap()],
-            [*nodes.last().unwrap(), ancestor, nodes[0]],
-            [nodes[0], ancestor, nodes[0]],
-            [nodes[0], parent, nodes[1]], // (first node, parent,  second node) is a premise
+            [nodes[0], ancestor, *nodes.last().unwrap(), default_graph],
+            [*nodes.last().unwrap(), ancestor, nodes[0], default_graph],
+            [nodes[0], ancestor, nodes[0], default_graph],
+            // (first node, parent, second node) is a premise
+            [nodes[0], parent, nodes[1], default_graph],
         ];
         let proof = prove::<&str, u32>(&facts, &composite_claims, &rules).unwrap();
-        let Valid { assumed, implied } = validate(&rules, &proof).unwrap();
+        let Valid { assumed, implied } = validate::<&str, u32>(&rules, &proof).unwrap();
         assert_eq!(
             &assumed,
             &facts.iter().cloned().collect(),
@@ -591,27 +680,29 @@ mod test {
 
     #[test]
     fn no_proof_is_generated_for_facts() {
-        let facts: Vec<Claim<&str>> = vec![
-            ["tacos", "are", "tasty"],
-            ["nachos", "are", "tasty"],
-            ["nachos", "are", "food"],
+        let facts: Vec<[&str; 4]> = vec![
+            ["tacos", "are", "tasty", "default_graph"],
+            ["nachos", "are", "tasty", "default_graph"],
+            ["nachos", "are", "food", "default_graph"],
         ];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Bound("nachos"), Bound("are"), Bound("tasty")]],
-            &[[Bound("nachos"), Bound("are"), Bound("food")]],
+            &[[B("nachos"), B("are"), B("tasty"), B("default_graph")]],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
         ]]);
-        let composite_claims = vec![["nachos", "are", "food"]];
-        let proof = prove(&facts, &composite_claims, &rules).unwrap();
+        let composite_claims = vec![["nachos", "are", "food", "default_graph"]];
+        let proof = prove::<&str, &str>(&facts, &composite_claims, &rules).unwrap();
         assert_eq!(&proof, &vec![]);
     }
 
     #[test]
     fn unconditional_rule() {
-        let facts: Vec<Claim<&str>> = vec![];
-        let rules =
-            decl_rules::<&str, &str>(&[[&[], &[[Bound("nachos"), Bound("are"), Bound("food")]]]]);
-        let composite_claims = vec![["nachos", "are", "food"]];
-        let proof = prove(&facts, &composite_claims, &rules).unwrap();
+        let facts: Vec<[&str; 4]> = vec![];
+        let rules = decl_rules::<&str, &str>(&[[
+            &[],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
+        ]]);
+        let composite_claims = vec![["nachos", "are", "food", "default_graph"]];
+        let proof = prove::<&str, &str>(&facts, &composite_claims, &rules).unwrap();
         assert_eq!(
             &proof,
             &[RuleApplication {

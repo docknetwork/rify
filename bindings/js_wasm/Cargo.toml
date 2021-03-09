@@ -1,6 +1,6 @@
 [package]
-name = "rify"
-version = "0.6.0"
+name = "rify_js"
+version = "0.0.1"
 authors = [
   "Andrew Dirksen <andrew@dirksen.com>",
   "Sam Hellawell <sshellawell@gmail.com>"
@@ -15,16 +15,14 @@ documentation = "https://docs.rs/rify"
 readme = "README.md"
 repository = "https://github.com/docknetwork/rify"
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lib]
-crate-type = ["lib"]
+crate-type = ["cdylib"]
 
 [dependencies]
-serde = { version = "1", optional = true, features = ["derive"] }
-
-[dev-dependencies]
-rify = { path = ".", features = [ "serde", "std" ] } # enables these features for tests
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-[features]
-default = []
-std = []
+rify = { path = "../..", features = ["serde"] }

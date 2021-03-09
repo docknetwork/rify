@@ -1,8 +1,11 @@
 extern crate wasm_bindgen;
 
-use crate::rule::InvalidRule;
-use crate::RuleApplication;
-use crate::{Claim, Rule};
+#[cfg(test)]
+mod js_wasm_test;
+
+use rify::InvalidRule;
+use rify::Rule;
+use rify::RuleApplication;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 
@@ -12,19 +15,19 @@ use wasm_bindgen::prelude::*;
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = {
 ///     if_all: [
-///         [{Unbound: "a"}, {Bound: "is"}, {Bound: "awesome"}],
-///         [{Unbound: "a"}, {Bound: "score"}, {Unbound: "s"}],
+///         [{Unbound: "a"}, {Bound: "is"}, {Bound: "awesome"}, {Bound: "default_graph"}],
+///         [{Unbound: "a"}, {Bound: "score"}, {Unbound: "s"}, {Bound: "default_graph"}],
 ///     ],
 ///     then: [
-///         [{Unbound: "a"}, {Bound: "score"}, {Bound: "awesome"}]
+///         [{Unbound: "a"}, {Bound: "score"}, {Bound: "awesome"}, {Bound: "default_graph"}]
 ///     ],
 /// };
 /// let proof = prove(
 ///   [
-///      ["you", "score", "unspecified"],
-///      ["you", "is", "awesome"],
+///      ["you", "score", "unspecified", "default_graph"],
+///      ["you", "is", "awesome", "default_graph"],
 ///   ],
-///   [["you", "score", "awesome"]],
+///   [["you", "score", "awesome", "default_graph"]],
 ///   [awesome_score_axiom],
 /// );
 /// expect(proof).to.deep.equal([{
@@ -39,20 +42,21 @@ pub fn prove(
     rules: Box<[JsValue]>,
 ) -> Result<Box<[JsValue]>, JsValue> {
     let proof = prove_(
-        deser_list(premises)?,
-        deser_list(to_prove)?,
-        deser_list(rules)?,
+        deser_list(&premises)?,
+        deser_list(&to_prove)?,
+        deser_list(&rules)?,
     )?;
     Ok(ser_list(&proof))
 }
 
-pub(super) fn prove_(
-    premises: Vec<Claim<String>>,
-    to_prove: Vec<Claim<String>>,
+pub fn prove_(
+    premises: Vec<[String; 4]>,
+    to_prove: Vec<[String; 4]>,
     rules: Vec<RuleUnchecked>,
 ) -> Result<Vec<RuleApplication<String>>, Error> {
     let rules = RuleUnchecked::check_all(rules)?;
-    let proof = crate::prove(&premises, &to_prove, &rules).map_err(Into::<Error>::into)?;
+    let proof =
+        rify::prove::<String, String>(&premises, &to_prove, &rules).map_err(Into::<Error>::into)?;
     Ok(proof)
 }
 
@@ -77,16 +81,16 @@ pub(super) fn prove_(
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = {
 ///   if_all: [
-///     [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }],
-///     [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }],
+///     [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }, { Bound: "default_graph" }],
+///     [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }, { Bound: "default_graph" }],
 ///   ],
 ///   then: [
-///     [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }]
+///     [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }, { Bound: "default_graph" }]
 ///   ],
 /// };
 /// let known_facts = [
-///   ["you", "score", "unspecified"],
-///   ["you", "is", "awesome"],
+///   ["you", "score", "unspecified", "default_graph"],
+///   ["you", "is", "awesome", "default_graph"],
 /// ];
 /// let valid = validate(
 ///   [awesome_score_axiom],
@@ -97,11 +101,11 @@ pub(super) fn prove_(
 /// );
 /// expect(valid).to.deep.equal({
 ///   assumed: [
-///     ["you", "is", "awesome"],
-///     ["you", "score", "unspecified"],
+///     ["you", "is", "awesome", "default_graph"],
+///     ["you", "score", "unspecified", "default_graph"],
 ///   ],
 ///   implied: [
-///     ["you", "score", "awesome"],
+///     ["you", "score", "awesome", "default_graph"],
 ///   ]
 /// });
 ///
@@ -113,34 +117,34 @@ pub(super) fn prove_(
 /// }
 ///
 /// // After verifying all the assumptions in the proof are true, we know that the
-/// // triples in valid.implied are true with respect to the provided rules.
+/// // quads in valid.implied are true with respect to the provided rules.
 /// ```
 #[wasm_bindgen]
 pub fn validate(rules: Box<[JsValue]>, proof: Box<[JsValue]>) -> Result<JsValue, JsValue> {
-    let valid = validate_(deser_list(rules)?, deser_list(proof)?)?;
+    let valid = validate_(deser_list(&rules)?, deser_list(&proof)?)?;
     Ok(ser(&valid))
 }
 
-pub(super) fn validate_(
+pub fn validate_(
     rules: Vec<RuleUnchecked>,
     proof: Vec<RuleApplication<String>>,
-) -> Result<crate::validate::Valid<String>, Error> {
+) -> Result<rify::Valid<String>, Error> {
     let rules = RuleUnchecked::check_all(rules)?;
-    let valid = crate::validate::validate(&rules, &proof)?;
+    let valid = rify::validate::<String, String>(&rules, &proof)?;
     Ok(valid)
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub(super) enum Entity {
+pub enum Entity {
     Unbound(String),
     Bound(String),
 }
 
-impl From<Entity> for crate::Entity<String, String> {
+impl From<Entity> for rify::Entity<String, String> {
     fn from(ent: Entity) -> Self {
         match ent {
-            Entity::Unbound(unbound) => crate::Entity::Unbound(unbound),
-            Entity::Bound(bound) => crate::Entity::Bound(bound),
+            Entity::Unbound(unbound) => rify::Entity::Unbound(unbound),
+            Entity::Bound(bound) => rify::Entity::Bound(bound),
         }
     }
 }
@@ -149,8 +153,8 @@ impl From<Entity> for crate::Entity<String, String> {
 pub enum Error {
     InputTypo,
     InvalidRule(InvalidRule<String>),
-    CantProve(crate::prove::CantProve),
-    InvalidProof(crate::validate::Invalid),
+    CantProve(rify::CantProve),
+    InvalidProof(rify::Invalid),
 }
 
 impl From<Error> for JsValue {
@@ -171,20 +175,20 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-impl From<crate::prove::CantProve> for Error {
-    fn from(other: crate::prove::CantProve) -> Self {
+impl From<rify::CantProve> for Error {
+    fn from(other: rify::CantProve) -> Self {
         Error::CantProve(other)
     }
 }
 
-impl From<crate::validate::Invalid> for Error {
-    fn from(other: crate::validate::Invalid) -> Self {
+impl From<rify::Invalid> for Error {
+    fn from(other: rify::Invalid) -> Self {
         Error::InvalidProof(other)
     }
 }
 
 /// Deserialize a list of js values into a list of rust values
-fn deser_list<T: DeserializeOwned>(a: Box<[JsValue]>) -> Result<Vec<T>, Error> {
+fn deser_list<T: DeserializeOwned>(a: &[JsValue]) -> Result<Vec<T>, Error> {
     a.iter().map(|b| deser::<T>(b)).collect()
 }
 
@@ -214,8 +218,8 @@ fn ser<T: serde::Serialize>(a: &T) -> JsValue {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuleUnchecked {
-    pub(super) if_all: Vec<Claim<Entity>>,
-    pub(super) then: Vec<Claim<Entity>>,
+    pub if_all: Vec<[Entity; 4]>,
+    pub then: Vec<[Entity; 4]>,
 }
 
 impl RuleUnchecked {
@@ -231,7 +235,7 @@ impl RuleUnchecked {
     }
 }
 
-fn convert_claim<T, A: Into<T>>(c: Claim<A>) -> Claim<T> {
-    let [s, p, o] = c;
-    [s.into(), p.into(), o.into()]
+fn convert_claim<T, A: Into<T>>(claim: [A; 4]) -> [T; 4] {
+    let [s, p, o, g] = claim;
+    [s.into(), p.into(), o.into(), g.into()]
 }

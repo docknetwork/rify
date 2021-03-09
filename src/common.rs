@@ -9,26 +9,28 @@
 /// assert_eq!(inc(&mut a), 2);
 /// assert_eq!(a, 3);
 /// ```
-pub fn inc(a: &mut u32) -> u32 {
-    *a += 1;
-    *a - 1
+pub fn inc<T: core::ops::AddAssign>(a: &mut T) -> T
+where
+    T: core::ops::AddAssign + Clone,
+    u8: Into<T>,
+{
+    let ret = a.clone();
+    *a += 1u8.into();
+    ret
 }
 
 #[cfg(test)]
 mod test_util {
-    use crate::rule::Entity;
-    pub use crate::rule::Entity::{Bound, Unbound};
-    use crate::rule::Rule;
-    use crate::Claim;
     use core::fmt::Debug;
 
     pub fn decl_rules<Unbound: Ord + Debug + Clone, Bound: Ord + Clone>(
-        rs: &[[&[Claim<Entity<Unbound, Bound>>]; 2]],
-    ) -> Vec<Rule<Unbound, Bound>> {
+        rs: &[[&[[crate::rule::Entity<Unbound, Bound>; 4]]; 2]],
+    ) -> Vec<crate::rule::Rule<Unbound, Bound>> {
         rs.iter()
-            .map(|[ifa, then]| Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
+            .map(|[ifa, then]| crate::rule::Rule::create(ifa.to_vec(), then.to_vec()).unwrap())
             .collect()
     }
 }
+
 #[cfg(test)]
 pub use test_util::*;

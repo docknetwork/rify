@@ -1,5 +1,5 @@
-use crate::prove::BadRuleApplication;
-use crate::{Claim, Rule, RuleApplication};
+use crate::prove::{BadRuleApplication, RuleApplication};
+use crate::rule::Rule;
 use alloc::collections::BTreeSet;
 
 /// Check is a proof is well-formed according to a ruleset. Returns the set of assumptions used by
@@ -29,10 +29,15 @@ use alloc::collections::BTreeSet;
 /// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
 /// let awesome_score_axiom = Rule::create(
 ///     vec![
-///         [Unbound("a"), Bound("is"), Bound("awesome")], // if someone is awesome
-///         [Unbound("a"), Bound("score"), Unbound("s")],  // and they have some score
+///         // if someone is awesome
+///         [Unbound("a"), Bound("is"), Bound("awesome"), Bound("default_graph")],
+///         // and they have some score
+///         [Unbound("a"), Bound("score"), Unbound("s"), Bound("default_graph")],
 ///     ],
-///     vec![[Unbound("a"), Bound("score"), Bound("awesome")]], // then they must have an awesome score
+///     vec![
+///         // then they must have an awesome score
+///         [Unbound("a"), Bound("score"), Bound("awesome"), Bound("default_graph")]
+///     ],
 /// )?;
 ///
 /// let proof = vec![
@@ -48,8 +53,8 @@ use alloc::collections::BTreeSet;
 ///     &proof,
 /// ).map_err(|e| format!("{:?}", e))?;
 ///
-/// // Now we know that under the given rules, if all RDF triples in `assumed` are true, then all
-/// // RDF triples in `implied` are also true.
+/// // Now we know that under the given rules, if all quads in `assumed` are true, then all
+/// // quads in `implied` are also true.
 /// # Ok(())
 /// # }
 /// ```
@@ -57,8 +62,8 @@ pub fn validate<Unbound: Ord + Clone, Bound: Ord + Clone>(
     rules: &[Rule<Unbound, Bound>],
     proof: &[RuleApplication<Bound>],
 ) -> Result<Valid<Bound>, Invalid> {
-    let mut implied: BTreeSet<Claim<Bound>> = BTreeSet::new();
-    let mut assumed: BTreeSet<Claim<Bound>> = BTreeSet::new();
+    let mut implied: BTreeSet<[Bound; 4]> = BTreeSet::new();
+    let mut assumed: BTreeSet<[Bound; 4]> = BTreeSet::new();
     for app in proof {
         let rule = rules.get(app.rule_index).ok_or(Invalid::NoSuchRule)?;
         for assumption in app.assumptions_when_applied(rule)? {
@@ -85,8 +90,8 @@ pub struct Valid<Bound> {
         feature = "serde",
         serde(bound(serialize = "Bound: Ord", deserialize = "Bound: Ord"))
     )]
-    pub assumed: BTreeSet<Claim<Bound>>,
-    pub implied: BTreeSet<Claim<Bound>>,
+    pub assumed: BTreeSet<[Bound; 4]>,
+    pub implied: BTreeSet<[Bound; 4]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -107,22 +112,29 @@ impl From<BadRuleApplication> for Invalid {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::{decl_rules, Bound, Unbound};
+    use crate::common::decl_rules;
     use crate::prove::prove;
+    use crate::rule::Entity::{Bound as B, Unbound as U};
 
     #[test]
     fn irrelevant_facts_ignored() {
-        let facts: Vec<Claim<&str>> = vec![["tacos", "are", "tasty"], ["nachos", "are", "tasty"]];
+        let facts: Vec<[&str; 4]> = vec![
+            ["tacos", "are", "tasty", "default_graph"],
+            ["nachos", "are", "tasty", "default_graph"],
+        ];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Bound("nachos"), Bound("are"), Bound("tasty")]],
-            &[[Bound("nachos"), Bound("are"), Bound("food")]],
+            &[[B("nachos"), B("are"), B("tasty"), B("default_graph")]],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
         ]]);
-        let composite_claims = vec![["nachos", "are", "food"]];
-        let proof = prove(&facts, &composite_claims, &rules).unwrap();
-        let Valid { assumed, implied } = validate(&rules, &proof).unwrap();
+        let composite_claims = vec![["nachos", "are", "food", "default_graph"]];
+        let proof = prove::<&str, &str>(&facts, &composite_claims, &rules).unwrap();
+        let Valid { assumed, implied } = validate::<&str, &str>(&rules, &proof).unwrap();
         assert_eq!(
             &assumed,
-            &[["nachos", "are", "tasty"]].iter().cloned().collect()
+            &[["nachos", "are", "tasty", "default_graph"]]
+                .iter()
+                .cloned()
+                .collect()
         );
         for claim in composite_claims {
             assert!(implied.contains(&claim));
@@ -131,30 +143,30 @@ mod test {
 
     #[test]
     fn bad_rule_application() {
-        let facts: Vec<Claim<&str>> = vec![["a", "a", "a"]];
+        let facts: Vec<[&str; 4]> = vec![["a", "a", "a", "a"]];
         let rules_v1 = decl_rules::<&str, &str>(&[[
-            &[[Unbound("a"), Bound("a"), Bound("a")]],
-            &[[Bound("b"), Bound("b"), Bound("b")]],
+            &[[U("a"), B("a"), B("a"), B("a")]],
+            &[[B("b"), B("b"), B("b"), B("b")]],
         ]]);
         let rules_v2 = decl_rules::<&str, &str>(&[[
-            &[[Bound("a"), Bound("a"), Bound("a")]],
-            &[[Bound("b"), Bound("b"), Bound("b")]],
+            &[[B("a"), B("a"), B("a"), B("a")]],
+            &[[B("b"), B("b"), B("b"), B("b")]],
         ]]);
-        let composite_claims = vec![["b", "b", "b"]];
-        let proof = prove(&facts, &composite_claims, &rules_v1).unwrap();
-        let err = validate(&rules_v2, &proof).unwrap_err();
+        let composite_claims = vec![["b", "b", "b", "b"]];
+        let proof = prove::<&str, &str>(&facts, &composite_claims, &rules_v1).unwrap();
+        let err = validate::<&str, &str>(&rules_v2, &proof).unwrap_err();
         assert_eq!(err, Invalid::BadRuleApplication);
     }
 
     #[test]
     fn no_such_rule() {
-        let facts: Vec<Claim<&str>> = vec![["a", "a", "a"]];
+        let facts: Vec<[&str; 4]> = vec![["a", "a", "a", "a"]];
         let rules = decl_rules::<&str, &str>(&[[
-            &[[Bound("a"), Bound("a"), Bound("a")]],
-            &[[Bound("b"), Bound("b"), Bound("b")]],
+            &[[B("a"), B("a"), B("a"), B("a")]],
+            &[[B("b"), B("b"), B("b"), B("b")]],
         ]]);
-        let composite_claims = vec![["b", "b", "b"]];
-        let proof = prove(&facts, &composite_claims, &rules).unwrap();
+        let composite_claims = vec![["b", "b", "b", "b"]];
+        let proof = prove::<&str, &str>(&facts, &composite_claims, &rules).unwrap();
         let err = validate::<&str, &str>(&[], &proof).unwrap_err();
         assert_eq!(err, Invalid::NoSuchRule);
     }
@@ -194,37 +206,38 @@ mod test {
         //   and (bob alergyFree true)
         //   therefore (bob mayEat beans)
 
+        // all the following rules operate on the default graph
         let rules = decl_rules(&[
             [
                 &[
-                    [Bound("andrew"), Bound("claims"), Unbound("c")],
-                    [Unbound("c"), Bound("subject"), Unbound("s")],
-                    [Unbound("c"), Bound("property"), Unbound("p")],
-                    [Unbound("c"), Bound("object"), Unbound("o")],
+                    [B("andrew"), B("claims"), U("c"), B("default_graph")],
+                    [U("c"), B("subject"), U("s"), B("default_graph")],
+                    [U("c"), B("property"), U("p"), B("default_graph")],
+                    [U("c"), B("object"), U("o"), B("default_graph")],
                 ],
-                &[[Unbound("s"), Unbound("p"), Unbound("o")]],
+                &[[U("s"), U("p"), U("o"), B("default_graph")]],
             ],
             [
-                &[[Unbound("a"), Bound("favoriteFood"), Unbound("f")]],
+                &[[U("a"), B("favoriteFood"), U("f"), B("default_graph")]],
                 &[
-                    [Unbound("a"), Bound("likes"), Unbound("f")],
-                    [Unbound("f"), Bound("type"), Bound("food")],
+                    [U("a"), B("likes"), U("f"), B("default_graph")],
+                    [U("f"), B("type"), B("food"), B("default_graph")],
                 ],
             ],
             [
                 &[
-                    [Unbound("f"), Bound("type"), Bound("food")],
-                    [Unbound("a"), Bound("alergyFree"), Bound("true")],
+                    [U("f"), B("type"), B("food"), B("default_graph")],
+                    [U("a"), B("alergyFree"), B("true"), B("default_graph")],
                 ],
-                &[[Unbound("a"), Bound("mayEat"), Unbound("f")]],
+                &[[U("a"), B("mayEat"), U("f"), B("default_graph")]],
             ],
         ]);
-        let facts: &[Claim<&str>] = &[
-            ["alice", "favoriteFood", "beans"],
-            ["andrew", "claims", "_:claim1"],
-            ["_:claim1", "subject", "bob"],
-            ["_:claim1", "property", "alergyFree"],
-            ["_:claim1", "object", "true"],
+        let facts: &[[&str; 4]] = &[
+            ["alice", "favoriteFood", "beans", "default_graph"],
+            ["andrew", "claims", "_:claim1", "default_graph"],
+            ["_:claim1", "subject", "bob", "default_graph"],
+            ["_:claim1", "property", "alergyFree", "default_graph"],
+            ["_:claim1", "object", "true", "default_graph"],
         ];
         let manual_proof = decl_proof(&[
             (1, &["alice", "beans"]),
@@ -236,10 +249,10 @@ mod test {
         assert_eq!(
             implied,
             [
-                ["alice", "likes", "beans"],
-                ["beans", "type", "food"],
-                ["bob", "alergyFree", "true"],
-                ["bob", "mayEat", "beans"] // this is the claim we wished to prove
+                ["alice", "likes", "beans", "default_graph"],
+                ["beans", "type", "food", "default_graph"],
+                ["bob", "alergyFree", "true", "default_graph"],
+                ["bob", "mayEat", "beans", "default_graph"] // this is the claim we wished to prove
             ]
             .iter()
             .cloned()
