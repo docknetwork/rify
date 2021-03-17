@@ -82,6 +82,17 @@ pub fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad>
     )
 }
 
+/// Reverse of forward.
+pub fn back<T: Ord>(translator: &Translator<T>, key: Quad) -> Option<[&T; 4]> {
+    let Quad { s, p, o, g } = key;
+    Some([
+        translator.back(s.0)?,
+        translator.back(p.0)?,
+        translator.back(o.0)?,
+        translator.back(g.0)?,
+    ])
+}
+
 /// list with repetition all bound vertices of rules and all verticies of premises
 pub fn vertices<'a, 'b, 'c, Bound, Unbound>(
     premises: &'a [[Bound; 4]],

@@ -197,6 +197,18 @@ impl Reasoner {
         let (strictest, less_strict) = rule.split_first_mut().expect("rule to be non-empty");
         Some((strictest, less_strict))
     }
+
+    /// Get the deduplicated history of all claims that were inserted into this reasoner.
+    /// The returned list will be in insertion order.
+    pub fn claims(self) -> Vec<Quad> {
+        self.claims
+    }
+
+    /// Get the deduplicated history of all claims that were inserted into this reasoner.
+    /// The returned list will be in insertion order.
+    pub fn claims_ref(&self) -> &[Quad] {
+        &self.claims
+    }
 }
 
 trait Indexed {
@@ -482,6 +494,22 @@ mod tests {
             .chain(initial_claims.iter().cloned())
             .collect();
         assert_eq!(claims, expected_claims);
+    }
+
+    #[test]
+    fn claims() {
+        let mut rs = Reasoner::default();
+        for quad in &[[1, 1, 1, 1], [1, 2, 2, 2], [1, 1, 1, 1], [1, 3, 3, 3]] {
+            rs.insert(quad.clone().into());
+        }
+        assert_eq!(
+            &rs.claims(),
+            &[
+                [1, 1, 1, 1].into(),
+                [1, 2, 2, 2].into(),
+                [1, 3, 3, 3].into()
+            ],
+        );
     }
 
     /// panics if an unbound name is implied

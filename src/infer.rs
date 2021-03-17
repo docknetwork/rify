@@ -1,15 +1,15 @@
-use crate::common::{forward, vertices, LowRuleApplication};
+use crate::common::back;
+use crate::common::{forward, vertices};
 use crate::reasoner::{Quad, Reasoner};
 use crate::rule::{LowRule, Rule};
 use crate::translator::Translator;
-use crate::RuleApplication;
 use alloc::collections::BTreeSet;
 
 /// Make all possible inferences.
 pub fn infer<Unbound: Ord + Clone, Bound: Ord + Clone>(
     premises: &[[Bound; 4]],
     rules: &[Rule<Unbound, Bound>],
-) -> Vec<RuleApplication<Bound>> {
+) -> Vec<[Bound; 4]> {
     let tran: Translator<Bound> = vertices(premises, rules).cloned().collect();
     let lpremises: Vec<Quad> = premises
         .iter()
@@ -17,31 +17,27 @@ pub fn infer<Unbound: Ord + Clone, Bound: Ord + Clone>(
         .collect();
     let lrules: Vec<LowRule> = rules
         .iter()
-        .cloned()
-        .map(|rule: Rule<Unbound, Bound>| -> LowRule { rule.lower(&tran).map_err(|_| ()).unwrap() })
+        .map(|rule| rule.lower(&tran).map_err(|_| ()).unwrap())
         .collect();
     low_infer(&lpremises, &lrules)
-        .iter()
-        .enumerate()
-        .map(|(i, lra)| lra.raise(&rules[i], &tran))
+        .into_iter()
+        .map(|quad| clones(back(&tran, quad).unwrap()))
         .collect()
 }
 
 /// A version of infer that operates on lowered input an returns output in lowered form.
-fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<LowRuleApplication> {
+fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<Quad> {
     let mut rs = Reasoner::default();
     for prem in premises {
-        rs.insert(prem.clone().into());
+        rs.insert(prem.clone());
     }
-
-    let mut arguments: Vec<LowRuleApplication> = Default::default();
+    let initial_len = rs.claims_ref().len(); // number of premises after dedup
+    debug_assert!(initial_len <= premises.len());
 
     loop {
         let mut to_add = BTreeSet::<Quad>::new();
-        for (rule_index, rr) in rules.iter().enumerate() {
+        for rr in rules.iter() {
             rs.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
-                let mut novel = false;
-
                 let ins = inst.as_ref();
                 for implied in &rr.then {
                     let new_quad = [
@@ -52,15 +48,8 @@ fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<LowRuleApplication> {
                     ]
                     .into();
                     if !rs.contains(&new_quad) {
-                        novel |= to_add.insert(new_quad);
+                        to_add.insert(new_quad);
                     }
-                }
-
-                if novel {
-                    arguments.push(LowRuleApplication {
-                        rule_index,
-                        instantiations: ins.clone(),
-                    });
                 }
             });
         }
@@ -72,14 +61,14 @@ fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<LowRuleApplication> {
         }
     }
 
-    debug_assert!(
-        {
-            let mut args = arguments.clone();
-            args.sort_unstable();
-            args.windows(2).all(|w| w[0] != w[1])
-        },
-        "results of inference should not contain duplicates"
-    );
+    // remove all premises, we only want to return new inferences
+    let mut claims = rs.claims();
+    drop(claims.drain(0..initial_len));
 
-    arguments
+    claims
+}
+
+fn clones<T: Clone>(arr: [&T; 4]) -> [T; 4] {
+    let [a, b, c, d] = arr;
+    [a.clone(), b.clone(), c.clone(), d.clone()]
 }
