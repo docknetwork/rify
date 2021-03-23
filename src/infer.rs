@@ -65,10 +65,123 @@ fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<Quad> {
     let mut claims = rs.claims();
     drop(claims.drain(0..initial_len));
 
+    debug_assert!(
+        {
+            let mut rc = claims.clone();
+            rc.sort_unstable();
+            rc.dedup();
+            rc.len() == claims.len()
+        },
+        "duplicate inferences should never be reported, this is a bug in rify"
+    );
+    debug_assert!(
+        {
+            let rc = claims.iter().collect::<BTreeSet<_>>();
+            premises.iter().all(|p| !rc.contains(p))
+        },
+        "premises should never be reported as new inferences, this is a bug in rify"
+    );
+
     claims
 }
 
 fn clones<T: Clone>(arr: [&T; 4]) -> [T; 4] {
     let [a, b, c, d] = arr;
     [a.clone(), b.clone(), c.clone(), d.clone()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::decl_rules;
+    use crate::rule::Entity::{Bound as B, Unbound as U};
+
+    #[test]
+    fn ancestry() {
+        let parent = "parent";
+        let ancestor = "ancestor";
+        let default_graph = "default_graph";
+        let nodes: Vec<String> = (0..10).map(|n| format!("node_{}", n)).collect();
+        let facts: Vec<[&str; 4]> = nodes
+            .iter()
+            .zip(nodes.iter().cycle().skip(1))
+            .map(|(a, b)| [a, parent, b, default_graph])
+            .collect();
+        let rules = decl_rules(&[
+            [
+                &[[U("a"), B(parent), U("b"), B(default_graph)]],
+                &[[U("a"), B(ancestor), U("b"), B(default_graph)]],
+            ],
+            [
+                &[
+                    [U("a"), B(ancestor), U("b"), B(default_graph)],
+                    [U("b"), B(ancestor), U("c"), B(default_graph)],
+                ],
+                &[[U("a"), B(ancestor), U("c"), B(default_graph)]],
+            ],
+        ]);
+        let mut inferences = infer(&facts, &rules);
+        // every node is ancestor to every other node
+        let mut expected: Vec<[&str; 4]> = nodes
+            .iter()
+            .flat_map(|n0| nodes.iter().map(move |n1| (n0, n1)))
+            .map(|(n0, n1)| [n0, ancestor, n1, default_graph])
+            .collect();
+
+        {
+            // checking multiset equality
+            expected.sort();
+            inferences.sort();
+            assert_eq!(inferences, expected);
+        }
+    }
+
+    #[test]
+    fn unconditional_rule() {
+        let facts: Vec<[&str; 4]> = vec![];
+        let rules = decl_rules::<&str, &str>(&[[
+            &[],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
+        ]]);
+        let inferences = infer::<&str, &str>(&facts, &rules);
+        assert_eq!(&inferences, &[["nachos", "are", "food", "default_graph"]]);
+    }
+
+    #[test]
+    fn reasoning_is_already_complete() {
+        let facts: Vec<[&str; 4]> = vec![
+            ["nachos", "are", "tasty", "default_graph"],
+            ["nachos", "are", "food", "default_graph"],
+        ];
+        let rules = decl_rules::<&str, &str>(&[[
+            &[[B("nachos"), B("are"), B("tasty"), B("default_graph")]],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
+        ]]);
+        let expected: [[&str; 4]; 0] = [];
+        assert_eq!(&infer(&facts, &rules), &expected)
+    }
+
+    #[test]
+    fn empty_ruleset() {
+        let facts: Vec<[&str; 4]> = vec![
+            ["nachos", "are", "tasty", "default_graph"],
+            ["nachos", "are", "food", "default_graph"],
+        ];
+        let rules = decl_rules::<&str, &str>(&[]);
+        let inferences = infer::<&str, &str>(&facts, &rules);
+        let expected: [[&str; 4]; 0] = [];
+        assert_eq!(&inferences, &expected);
+    }
+
+    #[test]
+    fn empty_claimgraph() {
+        let facts: Vec<[&str; 4]> = vec![];
+        let rules = decl_rules::<&str, &str>(&[[
+            &[[B("nachos"), B("are"), B("tasty"), B("default_graph")]],
+            &[[B("nachos"), B("are"), B("food"), B("default_graph")]],
+        ]]);
+        let inferences = infer::<&str, &str>(&facts, &rules);
+        let expected: [[&str; 4]; 0] = [];
+        assert_eq!(&inferences, &expected);
+    }
 }
