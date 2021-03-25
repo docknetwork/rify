@@ -8,7 +8,7 @@ Rify is a [forward chaining](https://en.wikipedia.org/wiki/Forward_chaining) [in
 
 It accepts conjunctive rules with limited expressiveness so reasoning is bounded by `O(n^k)` in both memory and in computation where n is the number of nodes in the input RDF dataset.
 
-Reasoning generates a proof which can be used to quickly verify the result pragmatically.
+Given premises and target statement[s], rify can generate a proof which can be used to quickly verify the result programatically.
 
 Logical rules are defined as if-then clauses. Something like this:
 
@@ -48,11 +48,11 @@ Rify doesn't care whether its input and output is valid rdf. For example, it wil
 
 # Use
 
-Two functions are central to this library: `prove` and `validate`.
+Three functions are central to this library: `prove`, `validate`, and `infer`.
+
+## prove
 
 ```rust
-// Example use of `prove`
-
 use rify::{
     prove,
     Entity::{Unbound, Bound},
@@ -96,13 +96,13 @@ assert_eq!(
 );
 ```
 
-```rust
-// Example use of `validate`
+# validate
 
+```rust
 use rify::{
     prove, validate, Valid,
     Rule, RuleApplication,
-	Entity::{Bound, Unbound}
+    Entity::{Bound, Unbound}
 };
 
 // same as above
@@ -129,6 +129,43 @@ let Valid { assumed, implied } = validate::<&str, &str>(
 
 // Now we know that under the given rules, if all quads in `assumed` are true, then all
 // quads in `implied` are also true.
+```
+
+## infer
+
+```rust
+use rify::{infer, Entity::{Unbound, Bound}, Rule};
+
+// (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+let awesome_score_axiom = Rule::create(
+    vec![
+        // if someone is awesome
+        [Unbound("a"), Bound("is"), Bound("awesome"), Bound("default_graph")],
+        // and they have some score
+        [Unbound("a"), Bound("score"), Unbound("s"), Bound("default_graph")],
+    ],
+    vec![
+        // then they must have an awesome score
+        [Unbound("a"), Bound("score"), Bound("awesome"), Bound("default_graph")]
+    ],
+).expect("invalid rule");
+
+let mut facts = vec![
+    ["you", "score", "unspecified", "default_graph"],
+    ["you", "is", "awesome", "default_graph"]
+];
+
+let new_facts = infer::<&str, &str>(&facts, &[awesome_score_axiom]);
+facts.extend(new_facts);
+
+assert_eq!(
+    &facts,
+    &[
+        ["you", "score", "unspecified", "default_graph"],
+        ["you", "is", "awesome", "default_graph"],
+        ["you", "score", "awesome", "default_graph"],
+    ],
+);
 ```
 
 # Recipes
