@@ -11,6 +11,7 @@ type ProofInput = Vec<RuleApplication<String>>;
 /// with the actual interface
 fn _types_correct(r: RulesInput, c: ClaimsInput, p: ProofInput) -> ProofInput {
     super::validate_(r.clone(), p).unwrap();
+    super::infer_(c.clone(), r.clone()).unwrap();
     super::prove_(c.clone(), c, r).unwrap()
 }
 

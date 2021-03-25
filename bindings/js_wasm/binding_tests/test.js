@@ -1,4 +1,4 @@
-import { prove, validate } from 'rify';
+import { prove, validate, infer } from 'rify';
 import { expect } from 'chai';
 
 // poor man's replacement for jest because making jest work with webpack+wasm is problematic
@@ -231,6 +231,30 @@ tests([
 
     // After verifying all the assumptions in the proof are true, we know that the
     // quads in valid.implied are true with respect to the provided rules.
+  }],
+
+  ['Example from doctest for infer actually runs.', () => {
+    // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+    let awesome_score_axiom = {
+      if_all: [
+        [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }, { Bound: "default_graph" }],
+        [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }, { Bound: "default_graph" }],
+      ],
+      then: [
+        [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }, { Bound: "default_graph" }]
+      ],
+    };
+    let facts = [
+      ["you", "score", "unspecified", "default_graph"],
+      ["you", "is", "awesome", "default_graph"],
+    ];
+    let new_facts = infer(facts, [awesome_score_axiom]);
+    facts = facts.concat(new_facts);
+    expect(facts).to.deep.equal([
+      ["you", "score", "unspecified", "default_graph"],
+      ["you", "is", "awesome", "default_graph"],
+      ["you", "score", "awesome", "default_graph"],
+    ]);
   }],
 ]);
 

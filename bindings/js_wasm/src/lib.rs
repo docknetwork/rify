@@ -134,6 +134,44 @@ pub fn validate_(
     Ok(valid)
 }
 
+/// Make all possible true inferences given input premises and rules. This is open-ended reasoning.
+///
+/// ```js
+/// // (?a, is, awesome) ∧ (?a, score, ?s) -> (?a score, awesome)
+/// let awesome_score_axiom = {
+///   if_all: [
+///     [{ Unbound: "a" }, { Bound: "is" }, { Bound: "awesome" }, { Bound: "default_graph" }],
+///     [{ Unbound: "a" }, { Bound: "score" }, { Unbound: "s" }, { Bound: "default_graph" }],
+///   ],
+///   then: [
+///     [{ Unbound: "a" }, { Bound: "score" }, { Bound: "awesome" }, { Bound: "default_graph" }]
+///   ],
+/// };
+/// let facts = [
+///   ["you", "score", "unspecified", "default_graph"],
+///   ["you", "is", "awesome", "default_graph"],
+/// ];
+/// let new_facts = infer(facts, [awesome_score_axiom]);
+/// facts = facts.concat(new_facts);
+/// expect(facts).to.deep.equal([
+///   ["you", "score", "unspecified", "default_graph"],
+///   ["you", "is", "awesome", "default_graph"],
+///   ["you", "score", "awesome", "default_graph"],
+/// ]);
+/// ```
+#[wasm_bindgen]
+pub fn infer(premises: Box<[JsValue]>, rules: Box<[JsValue]>) -> Result<JsValue, JsValue> {
+    Ok(ser(&infer_(deser_list(&premises)?, deser_list(&rules)?)?))
+}
+
+pub fn infer_(
+    premises: Vec<[String; 4]>,
+    rules: Vec<RuleUnchecked>,
+) -> Result<Vec<[String; 4]>, Error> {
+    let rules = RuleUnchecked::check_all(rules)?;
+    Ok(rify::infer::<String, String>(&premises, &rules))
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Entity {
     Unbound(String),
