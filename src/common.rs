@@ -69,6 +69,9 @@ impl LowRuleApplication {
 }
 
 /// Attempt to forward translate a quad.
+/// This is a helper function. It translates all four element of a quad, calling
+/// [Translator::forward] for each element. If any element has no translation
+/// this function will return `None`.
 pub fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad> {
     let [s, p, o, g] = key;
     Some(
@@ -82,7 +85,9 @@ pub fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad>
     )
 }
 
-/// Reverse of forward.
+/// Reverse of [forward].
+/// [forward] translates each element from `T` to `usize`. This function translates each element
+/// from `usize` to `T`. If any element has no translation this function will return `None`.
 pub fn back<T: Ord>(translator: &Translator<T>, key: Quad) -> Option<[&T; 4]> {
     let Quad { s, p, o, g } = key;
     Some([
