@@ -96,6 +96,8 @@ mod tests {
     use crate::common::decl_rules;
     use crate::rule::Entity::{Bound as B, Unbound as U};
 
+    const DG: &str = "default_graph";
+
     #[test]
     fn ancestry() {
         let parent = "parent";
@@ -183,5 +185,76 @@ mod tests {
         let inferences = infer::<&str, &str>(&facts, &rules);
         let expected: [[&str; 4]; 0] = [];
         assert_eq!(&inferences, &expected);
+    }
+
+    #[test]
+    fn sum_of_consecutive_ints_is_odd() {
+        let mut facts = vec![
+            ["B", "is a consecutive int to", "A", DG],
+            ["A+B", "result of op", "op_add_A_B", DG],
+            ["op_add_A_B", "op_type", "add", DG],
+            ["op_add_A_B", "left_hand", "A", DG],
+            ["op_add_A_B", "right_hand", "B", DG],
+        ];
+
+        let rules = [
+            Rule::create(
+                // consecutive ints = x, x+1
+                vec![[U("y"), B("is a consecutive int to"), U("x"), B(DG)]],
+                vec![[U("y"), B("equals (t -> t+1) of"), U("x"), B(DG)]], // y=x+1
+            )
+            .expect("invalid rule"),
+            Rule::create(
+                // int+int == int
+                vec![
+                    [U("y"), B("is type"), B("int"), B(DG)],
+                    [U("x"), B("is type"), B("int"), B(DG)],
+                    [U("x+y"), B("result of op"), U("op1"), B(DG)],
+                    [U("op1"), B("op_type"), B("add"), B(DG)],
+                    [U("op1"), B("left_hand"), U("x"), B(DG)],
+                    [U("op1"), B("right_hand"), U("y"), B(DG)],
+                ],
+                vec![[U("x+y"), B("is type"), B("int"), B(DG)]],
+            )
+            .expect("invalid rule"),
+            Rule::create(
+                // x+(x+1) = 2x+1
+                vec![
+                    [U("y"), B("equals (t -> t+1) of"), U("x"), B(DG)],
+                    [U("x+y"), B("result of op"), U("op1"), B(DG)],
+                    [U("op1"), B("op_type"), B("add"), B(DG)],
+                    [U("op1"), B("left_hand"), U("x"), B(DG)],
+                    [U("op1"), B("right_hand"), U("y"), B(DG)],
+                ],
+                vec![[U("x+y"), B("equals (t -> 2*t+1) of"), U("x"), B(DG)]],
+            )
+            .expect("invalid rule"),
+            Rule::create(
+                // if r == 2t+1, t int, then r is odd
+                vec![
+                    [U("v"), B("equals (t -> 2*t+1) of"), U("w"), B(DG)],
+                    [U("v"), B("is type"), B("int"), B(DG)],
+                    [U("w"), B("is type"), B("int"), B(DG)],
+                ],
+                vec![[U("v"), B("is"), B("odd"), B(DG)]],
+            )
+            .expect("invalid rule"),
+            Rule::create(
+                // consecutive ints are ints
+                vec![[U("p"), B("is a consecutive int to"), U("q"), B(DG)]],
+                vec![
+                    [U("p"), B("is type"), B("int"), B(DG)],
+                    [U("q"), B("is type"), B("int"), B(DG)],
+                ],
+            )
+            .expect("invalid rule"),
+        ];
+
+        let new_facts = infer::<&str, &str>(&facts, &rules);
+        facts.extend(new_facts);
+
+        // did we prove that A+B is odd ?
+        let to_prove = ["A+B", "is", "odd", DG];
+        assert!(facts.contains(&to_prove));
     }
 }
