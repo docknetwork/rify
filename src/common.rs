@@ -28,12 +28,21 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// A proof element that has yet to be translated to a presentable form.
+///
+/// [crate::prove::prove] function does not immediately convert LowRuleApplication's to
+/// [RuleApplication]'s. Rather, it converts only the LowRuleApplication's it is going to return
+/// to the caller.
 pub struct LowRuleApplication {
     pub rule_index: usize,
     pub instantiations: BTreeMap<usize, usize>,
 }
 
 impl LowRuleApplication {
+    /// Translate to a higher representation [RuleApplication]. The higher representation is
+    /// portable to other machines as long as those machines assume the same rule list.
+    /// This lower representation is not portable.
+    ///
     /// Panics
     ///
     /// This function will panic if:

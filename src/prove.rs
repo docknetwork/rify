@@ -211,6 +211,37 @@ impl std::error::Error for CantProve {}
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+/// An element of a deductive proof. Proofs can be transmitted and later validatated as long as the
+/// validator assumes the same rule list as the prover.
+///
+/// Unbound variables are bound to the values in `instanitations`. They are bound in order of
+/// initial appearance.
+///
+/// Given the rule:
+///
+/// ```customlang
+/// ifall
+///   [?z ex:foo ?x DG]
+/// then
+///   [?x ex:bar ?z DG]
+/// ```
+///
+/// and the RuleApplication:
+///
+/// ```customlang
+/// RuleApplication {
+///   rule_index: 0,
+///   instantiations: vec!["foer", "bary"],
+/// }
+/// ```
+///
+/// The rule application represents the deductive proof:
+///
+/// ```customlang
+/// [foer ex:foo bary DG]
+/// therefore
+/// [bary ex:bar foer DG]
+/// ```
 pub struct RuleApplication<Bound> {
     /// The index of the rule in the implicitly associated rule list.
     pub rule_index: usize,
