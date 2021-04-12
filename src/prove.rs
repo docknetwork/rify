@@ -1,3 +1,6 @@
+use crate::common::forward;
+use crate::common::vertices;
+use crate::common::LowRuleApplication;
 use crate::reasoner::{Quad, Reasoner};
 use crate::rule::{Entity, LowRule, Rule};
 use crate::translator::Translator;
@@ -57,27 +60,14 @@ pub fn prove<'a, Unbound: Ord + Clone, Bound: Ord + Clone>(
     to_prove: &'a [[Bound; 4]],
     rules: &'a [Rule<Unbound, Bound>],
 ) -> Result<Vec<RuleApplication<Bound>>, CantProve> {
-    let tran: Translator<Bound> = rules
+    let tran: Translator<Bound> = vertices(premises, rules).cloned().collect();
+    let lpremises: Vec<Quad> = premises
         .iter()
-        .flat_map(|rule| rule.iter_entities().filter_map(Entity::as_bound))
-        .chain(premises.iter().flatten())
-        .cloned()
+        .map(|spog| forward(&tran, spog).unwrap())
         .collect();
-    let as_raw = |[s, p, o, g]: &[Bound; 4]| -> Option<Quad> {
-        Some(
-            [
-                tran.forward(&s)?,
-                tran.forward(&p)?,
-                tran.forward(&o)?,
-                tran.forward(&g)?,
-            ]
-            .into(),
-        )
-    };
-    let lpremises: Vec<Quad> = premises.iter().map(|spo| as_raw(spo).unwrap()).collect();
     let lto_prove: Vec<Quad> = to_prove
         .iter()
-        .map(as_raw)
+        .map(|spog| forward(&tran, spog))
         .collect::<Option<_>>()
         .ok_or(CantProve::NovelName)?;
     let lrules: Vec<LowRule> = rules
@@ -219,49 +209,39 @@ impl Display for CantProve {
 #[cfg(feature = "std")]
 impl std::error::Error for CantProve {}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct LowRuleApplication {
-    rule_index: usize,
-    instantiations: BTreeMap<usize, usize>,
-}
-
-impl LowRuleApplication {
-    /// Panics
-    ///
-    /// This function will panic if:
-    ///   - an unbound item from originial_rule is not instatiated by self
-    ///   - or there is no translation for a global instatiation of one of the unbound entities in
-    ///     original_rule.
-    fn raise<Unbound: Ord, Bound: Ord + Clone>(
-        &self,
-        original_rule: &Rule<Unbound, Bound>,
-        trans: &Translator<Bound>,
-    ) -> RuleApplication<Bound> {
-        let mut instantiations = Vec::new();
-
-        // unbound_human -> unbound_local
-        let uhul: BTreeMap<&Unbound, usize> = original_rule
-            .cononical_unbound()
-            .enumerate()
-            .map(|(i, a)| (a, i))
-            .collect();
-
-        for unbound_human in original_rule.cononical_unbound() {
-            let unbound_local: usize = uhul[unbound_human];
-            let bound_global: usize = self.instantiations[&unbound_local];
-            let bound_human: &Bound = trans.back(bound_global).unwrap();
-            instantiations.push(bound_human.clone());
-        }
-
-        RuleApplication {
-            rule_index: self.rule_index,
-            instantiations,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+/// An element of a deductive proof. Proofs can be transmitted and later validatated as long as the
+/// validator assumes the same rule list as the prover.
+///
+/// Unbound variables are bound to the values in `instanitations`. They are bound in order of
+/// initial appearance.
+///
+/// Given the rule:
+///
+/// ```customlang
+/// ifall
+///   [?z ex:foo ?x DG]
+/// then
+///   [?x ex:bar ?z DG]
+/// ```
+///
+/// and the RuleApplication:
+///
+/// ```customlang
+/// RuleApplication {
+///   rule_index: 0,
+///   instantiations: vec!["foer", "bary"],
+/// }
+/// ```
+///
+/// The rule application represents the deductive proof:
+///
+/// ```customlang
+/// [foer ex:foo bary DG]
+/// therefore
+/// [bary ex:bar foer DG]
+/// ```
 pub struct RuleApplication<Bound> {
     /// The index of the rule in the implicitly associated rule list.
     pub rule_index: usize,

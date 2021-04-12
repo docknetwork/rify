@@ -1,6 +1,4 @@
-//! The reasoner's rule representation is optimized machine use, not human use. Comprehending and
-//! composing rules directly is difficult for humans. This module provides a human friendly rule
-//! description datatype that can be lowered to the reasoner's rule representation.
+//! Defines a human frendly-ish logical rule representation [Rule].
 
 use crate::common::inc;
 use crate::reasoner::{Instantiations, Quad};
@@ -11,9 +9,17 @@ use core::fmt::Debug;
 use core::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-// invariants held:
-//   unbound names may not exists in `then` unless they exist also in `if_all`
-//
+/// The reasoner's rule representation.
+/// It is is optimized machine use, not human use. Comprehending and writing these rules directly
+/// is difficult for humans.
+/// [Rule] is the human friendly representation.
+/// A [Rule] can be converted to a [LowRule] via the [Rule::lower].
+/// We hide the lowered rule representation from the user of this library.
+/// Interfaces like [crate::prove::prove], [crate::validate::validate], and [crate::infer::infer]
+/// accept [Rule] as input and lower to this representation before passing it to the reasoner.
+///
+/// Invariants held:
+///   unbound names may not exists in `then` unless they exist also in `if_all`
 // TODO: find a way to make fields non-public to protect invariant
 pub(crate) struct LowRule {
     pub if_all: Vec<Quad>,    // contains locally scoped names
@@ -46,14 +52,23 @@ impl<Unbound, Bound> Entity<Unbound, Bound> {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-// invariants held:
-//   unbound names may not exists in `then` unless they exist also in `if_all`
+/// A human friendly-ish logical rule representation. Each rule represents an
+/// if-then statement (implication relationship). Statements in the rule
+/// may contain constants and/or variables. Constants are represented as [Entity::Bound].
+/// Variables are represented as [Entity::Unbound].
+///
+/// So that rules remain turing-incomplete, an invariant is upheld:
+/// Unbound entities may not exists in the `then` clause unless they exist also in the `if_all`
+/// clause.
 pub struct Rule<Unbound, Bound> {
     if_all: Vec<[Entity<Unbound, Bound>; 4]>,
     then: Vec<[Entity<Unbound, Bound>; 4]>,
 }
 
 impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
+    /// This constructor ensures that any unbound element in `then` also exists somewhere
+    /// in `if_all`. If this is not the case the rule is invalid and the function will return
+    /// `Err`. Otherwise it will return `Ok`.
     pub fn create(
         if_all: Vec<[Entity<Unbound, Bound>; 4]>,
         then: Vec<[Entity<Unbound, Bound>; 4]>,
@@ -70,6 +85,10 @@ impl<'a, Unbound: Ord + Clone, Bound: Ord> Rule<Unbound, Bound> {
         Ok(Self { if_all, then })
     }
 
+    /// Converts [Rule] to [LowRule]. As part of the conversion
+    /// this function uses `translator` to convert bound entities to
+    /// the usize representation. If the rule contains any bound entity for which the translator
+    /// contains no translation this function will return `Err`. Otherwise it will return `Ok`.
     pub(crate) fn lower(&self, tran: &Translator<Bound>) -> Result<LowRule, NoTranslation<&Bound>> {
         // There are three types of name at play here.
         // - human names are represented as Entities

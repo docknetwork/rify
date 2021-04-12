@@ -5,7 +5,7 @@
     "Sam Hellawell <sshellawell@gmail.com>"
   ],
   "description": "RDF reasoner that operates on RIF-like conjunctive rules. Outputs a machine\nreadable proof of some claim which can be cheaply verified.\n",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
