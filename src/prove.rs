@@ -7,7 +7,7 @@ use crate::translator::Translator;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::{Debug, Display};
 
-/// Locate a proof of some composite claims given the provied premises and rules.
+/// Locate a proof of some composite claims given the provided premises and rules.
 ///
 /// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -93,47 +93,70 @@ fn low_prove(
     rules: &[LowRule],
 ) -> Result<Vec<LowRuleApplication>, CantProve> {
     let mut rs = Reasoner::default();
-    for prem in premises {
-        rs.insert(prem.clone());
-    }
-
     // statement (Quad) is proved by applying rule (LowRuleApplication)
     let mut arguments: BTreeMap<Quad, LowRuleApplication> = BTreeMap::new();
+    let mut to_add: BTreeSet<Quad> = premises.iter().cloned().collect();
+
+    for (rule_index, rule) in rules.iter().enumerate() {
+        if rule.if_all.is_empty() {
+            for implied in &rule.then {
+                let new_quad = implied.clone().local_to_global(&rule.inst).unwrap();
+                if to_add.insert(new_quad.clone()) {
+                    arguments.insert(
+                        new_quad,
+                        LowRuleApplication {
+                            rule_index,
+                            instantiations: Default::default(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+    let mut rules2: Vec<(usize, LowRule)> = rules
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_index, rule)| !rule.if_all.is_empty())
+        .collect();
 
     // reason
-    loop {
-        if to_prove.iter().all(|tp| rs.contains(tp)) {
-            break;
-        }
-        let mut to_add = BTreeSet::<Quad>::new();
-        for (rule_index, rr) in rules.iter().enumerate() {
-            rs.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
-                let ins = inst.as_ref();
-                for implied in &rr.then {
-                    let new_quad = [
-                        ins[&implied.s.0],
-                        ins[&implied.p.0],
-                        ins[&implied.o.0],
-                        ins[&implied.g.0],
-                    ]
-                    .into();
-                    if !rs.contains(&new_quad) {
-                        arguments
-                            .entry(new_quad.clone())
-                            .or_insert_with(|| LowRuleApplication {
-                                rule_index,
-                                instantiations: ins.clone(),
+    while !to_add.is_empty() && !to_prove.iter().all(|tp| rs.contains(tp)) {
+        let mut adding_now = BTreeSet::<Quad>::new();
+        core::mem::swap(&mut adding_now, &mut to_add);
+        for fact in &adding_now {
+            rs.insert(fact.clone());
+            for (
+                rule_index,
+                LowRule {
+                    ref mut if_all,
+                    then,
+                    ref mut inst,
+                },
+            ) in rules2.iter_mut()
+            {
+                rs.apply_related(fact.clone(), if_all, inst, &mut |inst| {
+                    let ins = inst.as_ref();
+                    for implied in then.iter() {
+                        let new_quad = [
+                            ins[&implied.s.0],
+                            ins[&implied.p.0],
+                            ins[&implied.o.0],
+                            ins[&implied.g.0],
+                        ]
+                        .into();
+                        if !rs.contains(&new_quad) && !adding_now.contains(&new_quad) {
+                            arguments.entry(new_quad.clone()).or_insert_with(|| {
+                                LowRuleApplication {
+                                    rule_index: *rule_index,
+                                    instantiations: ins.clone(),
+                                }
                             });
-                        to_add.insert(new_quad);
+                            to_add.insert(new_quad);
+                        }
                     }
-                }
-            });
-        }
-        if to_add.is_empty() {
-            break;
-        }
-        for new in to_add.into_iter() {
-            rs.insert(new);
+                });
+            }
         }
     }
 

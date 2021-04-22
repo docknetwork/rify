@@ -27,6 +27,19 @@ pub(crate) struct LowRule {
     pub inst: Instantiations, // partially maps the local scope to some global scope
 }
 
+// impl LowRule {
+//     /// List all implications as globaly scoped quads.
+//     ///
+//     /// # Panics
+//     ///
+//     /// Panics if rule is not sufficiently instantiated.
+//     pub fn instantiated(&self) -> impl Iterator<Item = Quad> {
+//         let inst = self.inst.as_ref();
+//         self.then.iter().map(|local| {
+//         })
+//     }
+// }
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum Entity<Unbound, Bound> {

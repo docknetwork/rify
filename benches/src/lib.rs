@@ -32,8 +32,8 @@ mod ancestry {
     }
 
     // Contains intentional leak; don't use outside of tests.
-    fn facts() -> Vec<[&'static str; 4]> {
-        let nodes: Vec<&str> = (0..20)
+    fn facts(numnodes: usize) -> Vec<[&'static str; 4]> {
+        let nodes: Vec<&str> = (0..numnodes)
             .map(|n| Box::leak(format!("node_{}", n).into_boxed_str()) as &str)
             .collect();
         let facts: Vec<[&str; 4]> = nodes
@@ -46,16 +46,30 @@ mod ancestry {
 
     #[bench]
     fn infer_(b: &mut Bencher) {
-        let facts = facts();
+        let facts = facts(20);
         let rules = rules();
         b.iter(|| infer(&facts, &rules));
     }
 
     #[bench]
     fn prove_(b: &mut Bencher) {
-        let facts = facts();
+        let facts = facts(20);
         let rules = rules();
-        b.iter(|| prove(&facts, &[[PARENT, PARENT, PARENT, PARENT]], &rules));
+        b.iter(|| prove(&facts, &[[PARENT, PARENT, PARENT, PARENT]], &rules).unwrap_err());
+    }
+
+    #[bench]
+    fn infer_30(b: &mut Bencher) {
+        let facts = facts(30);
+        let rules = rules();
+        b.iter(|| infer(&facts, &rules));
+    }
+
+    #[bench]
+    fn prove_30(b: &mut Bencher) {
+        let facts = facts(30);
+        let rules = rules();
+        b.iter(|| prove(&facts, &[[PARENT, PARENT, PARENT, PARENT]], &rules).unwrap_err());
     }
 }
 

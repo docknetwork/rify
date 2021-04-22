@@ -10,6 +10,31 @@ pub struct Quad {
     pub g: Grap,
 }
 
+impl Quad {
+    fn zip(self, other: Quad) -> [(usize, usize); 4] {
+        [
+            (self.s.0, other.s.0),
+            (self.p.0, other.p.0),
+            (self.o.0, other.o.0),
+            (self.g.0, other.g.0),
+        ]
+    }
+
+    /// Attempt dereference all variable in self.
+    pub fn local_to_global(self, inst: &Instantiations) -> Option<Quad> {
+        let inst = inst.as_ref();
+        Some(
+            [
+                *inst.get(&self.s.0)?,
+                *inst.get(&self.p.0)?,
+                *inst.get(&self.o.0)?,
+                *inst.get(&self.g.0)?,
+            ]
+            .into(),
+        )
+    }
+}
+
 impl From<[usize; 4]> for Quad {
     fn from([s, p, o, g]: [usize; 4]) -> Self {
         Self {
@@ -102,6 +127,34 @@ impl Reasoner {
         .all(|wn| wn[0] == wn[1]));
     }
 
+    /// Granted a statement find in this store all possible valid instantiations of rule that
+    /// involve the statement. It is expexcted that the statement has already been [Self::insert]ed.
+    pub fn apply_related(
+        &self,
+        quad: Quad,
+        rule: &mut [Quad],
+        instantiations: &mut Instantiations,
+        cb: &mut impl FnMut(&Instantiations),
+    ) {
+        debug_assert!(self.contains(&quad));
+        debug_assert!(!rule.is_empty(), "potential confusing so disallowed");
+        // for each atom of rule, if the atom can match the quad, bind the unbound variables in the
+        // atom to the corresponding elements of quad, then call apply.
+        for i in 0..rule.len() {
+            let (rule_part, rule_rest) = evict(i, rule).unwrap();
+            if can_match(quad.clone(), rule_part.clone(), instantiations) {
+                let to_set = rule_part.clone().zip(quad.clone());
+                for (k, v) in &to_set {
+                    instantiations.write(*k, *v);
+                }
+                self.apply(rule_rest, instantiations, cb);
+                for _ in &to_set {
+                    instantiations.undo().unwrap();
+                }
+            }
+        }
+    }
+
     /// Find in this store all possible valid instantiations of rule. Report the
     /// instantiations through a callback.
     /// TODO: This function is recursive, but not tail recursive. Rules that are too long may
@@ -125,12 +178,7 @@ impl Reasoner {
         // in the requirement to the instantiation then recurse.
         for index in self.matches(strictest, instantiations) {
             let quad = &self.claims[*index];
-            let to_write = [
-                (strictest.s.0, quad.s.0),
-                (strictest.p.0, quad.p.0),
-                (strictest.o.0, quad.o.0),
-                (strictest.g.0, quad.g.0),
-            ];
+            let to_write = strictest.clone().zip(quad.clone());
             for (k, v) in &to_write {
                 debug_assert!(
                     if let Some(committed_v) = instantiations.as_ref().get(&k) {
@@ -193,9 +241,7 @@ impl Reasoner {
     ) -> Option<(&'rule Quad, &'rule mut [Quad])> {
         let index_strictest = (0..rule.len())
             .min_by_key(|index| self.matches(&rule[*index], instantiations).len())?;
-        rule.swap(0, index_strictest);
-        let (strictest, less_strict) = rule.split_first_mut().expect("rule to be non-empty");
-        Some((strictest, less_strict))
+        evict(index_strictest, rule)
     }
 
     /// Get the deduplicated history of all claims that were inserted into this reasoner.
@@ -203,12 +249,31 @@ impl Reasoner {
     pub fn claims(self) -> Vec<Quad> {
         self.claims
     }
+}
 
-    /// Get the deduplicated history of all claims that were inserted into this reasoner.
-    /// The returned list will be in insertion order.
-    pub fn claims_ref(&self) -> &[Quad] {
-        &self.claims
+fn evict<'a, T>(index: usize, unordered_list: &'a mut [T]) -> Option<(&'a T, &'a mut [T])> {
+    if index >= unordered_list.len() {
+        None
+    } else {
+        unordered_list.swap(0, index);
+        let (popped, rest) = unordered_list
+            .split_first_mut()
+            .expect("list to be non-empty");
+        Some((popped, rest))
     }
+}
+
+/// returns whether rule_part could validly be applied to quad assuming the already given
+/// instantiations
+fn can_match(quad: Quad, rule_part: Quad, instantiations: &Instantiations) -> bool {
+    let inst = instantiations.as_ref();
+    rule_part
+        .zip(quad)
+        .iter()
+        .all(|(rp, q)| match inst.get(&rp) {
+            Some(a) => a == q,
+            None => true,
+        })
 }
 
 trait Indexed {
