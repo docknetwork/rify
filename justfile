@@ -30,6 +30,7 @@ js-test:
 # remove dist and node_modules from js bindings tests
 clean:
   cargo clean
+  cd benches; cargo clean
   rm -r bindings/js_wasm/pkg || true
   just clean-js
 
@@ -37,3 +38,8 @@ clean:
 clean-js:
   rm -r bindings/js_wasm/binding_tests/dist || true
   rm -r bindings/js_wasm/binding_tests/node_modules || true
+
+bench:
+  #!/usr/bin/env bash
+  cd benches
+  cargo bench
