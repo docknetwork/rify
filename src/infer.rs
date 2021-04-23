@@ -28,36 +28,51 @@ pub fn infer<Unbound: Ord + Clone, Bound: Ord + Clone>(
 /// A version of infer that operates on lowered input an returns output in lowered form.
 fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<Quad> {
     let mut rs = Reasoner::default();
-    for prem in premises {
-        rs.insert(prem.clone());
-    }
-    let initial_len = rs.claims_ref().len(); // number of premises after dedup
-    debug_assert!(initial_len <= premises.len());
 
-    loop {
-        let mut to_add = BTreeSet::<Quad>::new();
-        for rr in rules.iter() {
-            rs.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
-                let ins = inst.as_ref();
-                for implied in &rr.then {
-                    let new_quad = [
-                        ins[&implied.s.0],
-                        ins[&implied.p.0],
-                        ins[&implied.o.0],
-                        ins[&implied.g.0],
-                    ]
-                    .into();
-                    if !rs.contains(&new_quad) {
-                        to_add.insert(new_quad);
-                    }
-                }
-            });
+    let mut to_add: BTreeSet<Quad> = premises.iter().cloned().collect();
+    let initial_len = to_add.len(); // number of premises after dedup
+    assert!(initial_len <= premises.len());
+
+    // apply_related is sufficient except for in the case of unconditional rules.
+    // in order to avoid calling apply() directly, rules with empty "if" clauses
+    // lists will get special treatment.
+    for rule in rules {
+        if rule.if_all.is_empty() {
+            for rule_part in &rule.then {
+                to_add.insert(rule_part.clone().local_to_global(&rule.inst).unwrap());
+            }
         }
+    }
+    let mut rules: Vec<LowRule> = rules
+        .iter()
+        .filter(|r| !r.if_all.is_empty())
+        .cloned()
+        .collect();
+
+    // subsequent reasoning is done in a loop using apply_related
+    loop {
         if to_add.is_empty() {
             break;
         }
-        for new in to_add.into_iter() {
-            rs.insert(new);
+        let mut adding = BTreeSet::default();
+        core::mem::swap(&mut to_add, &mut adding);
+        for new in adding.iter().cloned() {
+            rs.insert(new.clone());
+            for LowRule {
+                ref mut if_all,
+                then,
+                ref mut inst,
+            } in rules.iter_mut()
+            {
+                rs.apply_related(new.clone(), if_all, inst, &mut |inst| {
+                    for implied in then.iter().cloned() {
+                        let new_quad = implied.local_to_global(inst).unwrap();
+                        if !rs.contains(&new_quad) && !adding.contains(&new_quad) {
+                            to_add.insert(new_quad);
+                        }
+                    }
+                });
+            }
         }
     }
 

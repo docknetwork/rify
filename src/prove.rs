@@ -7,7 +7,7 @@ use crate::translator::Translator;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::{Debug, Display};
 
-/// Locate a proof of some composite claims given the provied premises and rules.
+/// Locate a proof of some composite claims given the provided premises and rules.
 ///
 /// ```
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -93,47 +93,63 @@ fn low_prove(
     rules: &[LowRule],
 ) -> Result<Vec<LowRuleApplication>, CantProve> {
     let mut rs = Reasoner::default();
-    for prem in premises {
-        rs.insert(prem.clone());
-    }
-
     // statement (Quad) is proved by applying rule (LowRuleApplication)
     let mut arguments: BTreeMap<Quad, LowRuleApplication> = BTreeMap::new();
+    let mut to_add: BTreeSet<Quad> = premises.iter().cloned().collect();
+
+    for (rule_index, rule) in rules.iter().enumerate() {
+        if rule.if_all.is_empty() {
+            for implied in &rule.then {
+                let new_quad = implied.clone().local_to_global(&rule.inst).unwrap();
+                if to_add.insert(new_quad.clone()) {
+                    arguments.insert(
+                        new_quad,
+                        LowRuleApplication {
+                            rule_index,
+                            instantiations: Default::default(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+    let mut rules2: Vec<(usize, LowRule)> = rules
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_index, rule)| !rule.if_all.is_empty())
+        .collect();
 
     // reason
-    loop {
-        if to_prove.iter().all(|tp| rs.contains(tp)) {
-            break;
-        }
-        let mut to_add = BTreeSet::<Quad>::new();
-        for (rule_index, rr) in rules.iter().enumerate() {
-            rs.apply(&mut rr.if_all.clone(), &mut rr.inst.clone(), &mut |inst| {
-                let ins = inst.as_ref();
-                for implied in &rr.then {
-                    let new_quad = [
-                        ins[&implied.s.0],
-                        ins[&implied.p.0],
-                        ins[&implied.o.0],
-                        ins[&implied.g.0],
-                    ]
-                    .into();
-                    if !rs.contains(&new_quad) {
-                        arguments
-                            .entry(new_quad.clone())
-                            .or_insert_with(|| LowRuleApplication {
-                                rule_index,
-                                instantiations: ins.clone(),
+    while !to_add.is_empty() && !to_prove.iter().all(|tp| rs.contains(tp)) {
+        let mut adding_now = BTreeSet::<Quad>::new();
+        core::mem::swap(&mut adding_now, &mut to_add);
+        for fact in &adding_now {
+            rs.insert(fact.clone());
+            for (
+                rule_index,
+                LowRule {
+                    ref mut if_all,
+                    then,
+                    ref mut inst,
+                },
+            ) in rules2.iter_mut()
+            {
+                rs.apply_related(fact.clone(), if_all, inst, &mut |inst| {
+                    for implied in then.iter().cloned() {
+                        let new_quad = implied.local_to_global(inst).unwrap();
+                        if !rs.contains(&new_quad) && !adding_now.contains(&new_quad) {
+                            arguments.entry(new_quad.clone()).or_insert_with(|| {
+                                LowRuleApplication {
+                                    rule_index: *rule_index,
+                                    instantiations: inst.inner().clone(),
+                                }
                             });
-                        to_add.insert(new_quad);
+                            to_add.insert(new_quad);
+                        }
                     }
-                }
-            });
-        }
-        if to_add.is_empty() {
-            break;
-        }
-        for new in to_add.into_iter() {
-            rs.insert(new);
+                });
+            }
         }
     }
 
@@ -160,8 +176,11 @@ fn recall_proof(
     outp: &mut Vec<LowRuleApplication>,
 ) {
     let to_global_scope = |rra: &LowRuleApplication, locally_scoped: usize| -> usize {
-        let concrete = rules[rra.rule_index].inst.as_ref().get(&locally_scoped);
-        let found = rra.instantiations.get(&locally_scoped);
+        let concrete = rules[rra.rule_index].inst.get(locally_scoped);
+        let found = rra
+            .instantiations
+            .get(locally_scoped)
+            .and_then(|o| o.as_ref());
         if let (Some(c), Some(f)) = (concrete, found) {
             debug_assert_eq!(c, f);
         }
@@ -214,7 +233,7 @@ impl std::error::Error for CantProve {}
 /// An element of a deductive proof. Proofs can be transmitted and later validatated as long as the
 /// validator assumes the same rule list as the prover.
 ///
-/// Unbound variables are bound to the values in `instanitations`. They are bound in order of
+/// Unbound variables are bound to the values in `instantiations`. They are bound in order of
 /// initial appearance.
 ///
 /// Given the rule:
@@ -288,31 +307,31 @@ impl<Bound: Clone> RuleApplication<Bound> {
 /// Panics
 ///
 /// panics if an unbound entity is not registered in map
-/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+/// panics if the canonical index of unbound (according to map) is too large to index instantiations
 fn bind_claim<Unbound: Ord, Bound: Clone>(
     [s, p, o, g]: [Entity<Unbound, Bound>; 4],
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> [Bound; 4] {
     [
-        bind_entity(s, map, instanitations),
-        bind_entity(p, map, instanitations),
-        bind_entity(o, map, instanitations),
-        bind_entity(g, map, instanitations),
+        bind_entity(s, map, instantiations),
+        bind_entity(p, map, instantiations),
+        bind_entity(o, map, instantiations),
+        bind_entity(g, map, instantiations),
     ]
 }
 
 /// Panics
 ///
 /// panics if an unbound entity is not registered in map
-/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+/// panics if the canonical index of unbound (according to map) is too large to index instantiations
 fn bind_entity<Unbound: Ord, Bound: Clone>(
     e: Entity<Unbound, Bound>,
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> Bound {
     match e {
-        Entity::Unbound(a) => instanitations[map[&a]].clone(),
+        Entity::Unbound(a) => instantiations[map[&a]].clone(),
         Entity::Bound(e) => e,
     }
 }

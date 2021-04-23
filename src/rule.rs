@@ -285,8 +285,7 @@ mod test {
                 .map(|local_name| {
                     re_rulea
                         .inst
-                        .as_ref()
-                        .get(&local_name)
+                        .get(*local_name)
                         .map(|global_name| trans.back(*global_name).unwrap().clone())
                 })
                 .collect();
@@ -340,8 +339,7 @@ mod test {
                 .map(|local_name| {
                     re_ruleb
                         .inst
-                        .as_ref()
-                        .get(&local_name)
+                        .get(*local_name)
                         .map(|global_name| trans.back(*global_name).unwrap().clone())
                 })
                 .collect();
