@@ -31,15 +31,35 @@ js-test:
 clean:
   cargo clean
   cd benches; cargo clean
-  rm -r bindings/js_wasm/pkg || true
+  rm -rf bindings/js_wasm/pkg
   just clean-js
 
 # remove artifacts from js bindings tests
 clean-js:
-  rm -r bindings/js_wasm/binding_tests/dist || true
-  rm -r bindings/js_wasm/binding_tests/node_modules || true
+  rm -rf bindings/js_wasm/binding_tests/dist
+  rm -rf bindings/js_wasm/binding_tests/node_modules
 
 bench:
   #!/usr/bin/env bash
   cd benches
   cargo bench
+
+checkall-buildall:
+  just clean
+  cargo test
+  cargo clippy -- -D warnings
+  just bench
+  just js-test
+
+assert-clean-workdir:
+  ! test -n "$(git status --porcelain)" # please commit before publish
+
+publish-js:
+  just checkall-buildall
+  just assert-clean-workdir
+  cd bindings/js_wasm/pkg && npm publish
+
+publish-rs:
+  just checkall-buildall
+  just assert-clean-workdir
+  cargo publish
