@@ -33,9 +33,9 @@ where
 /// [crate::prove::prove] function does not immediately convert LowRuleApplication's to
 /// [RuleApplication]'s. Rather, it converts only the LowRuleApplication's it is going to return
 /// to the caller.
-pub struct LowRuleApplication {
+pub(crate) struct LowRuleApplication {
     pub rule_index: usize,
-    pub instantiations: BTreeMap<usize, usize>,
+    pub instantiations: Vec<Option<usize>>,
 }
 
 impl LowRuleApplication {
@@ -65,7 +65,7 @@ impl LowRuleApplication {
 
         for unbound_human in original_rule.cononical_unbound() {
             let unbound_local: usize = uhul[unbound_human];
-            let bound_global: usize = self.instantiations[&unbound_local];
+            let bound_global: usize = self.instantiations.get(unbound_local).unwrap().unwrap();
             let bound_human: &Bound = trans.back(bound_global).unwrap();
             instantiations.push(bound_human.clone());
         }
@@ -81,7 +81,7 @@ impl LowRuleApplication {
 /// This is a helper function. It translates all four element of a quad, calling
 /// [Translator::forward] for each element. If any element has no translation
 /// this function will return `None`.
-pub fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad> {
+pub(crate) fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad> {
     let [s, p, o, g] = key;
     Some(
         [
@@ -97,7 +97,7 @@ pub fn forward<T: Ord>(translator: &Translator<T>, key: &[T; 4]) -> Option<Quad>
 /// Reverse of [forward].
 /// [forward] translates each element from `T` to `usize`. This function translates each element
 /// from `usize` to `T`. If any element has no translation this function will return `None`.
-pub fn back<T: Ord>(translator: &Translator<T>, key: Quad) -> Option<[&T; 4]> {
+pub(crate) fn back<T: Ord>(translator: &Translator<T>, key: Quad) -> Option<[&T; 4]> {
     let Quad { s, p, o, g } = key;
     Some([
         translator.back(s.0)?,

@@ -136,20 +136,13 @@ fn low_prove(
             ) in rules2.iter_mut()
             {
                 rs.apply_related(fact.clone(), if_all, inst, &mut |inst| {
-                    let ins = inst.as_ref();
-                    for implied in then.iter() {
-                        let new_quad = [
-                            ins[&implied.s.0],
-                            ins[&implied.p.0],
-                            ins[&implied.o.0],
-                            ins[&implied.g.0],
-                        ]
-                        .into();
+                    for implied in then.iter().cloned() {
+                        let new_quad = implied.local_to_global(inst).unwrap();
                         if !rs.contains(&new_quad) && !adding_now.contains(&new_quad) {
                             arguments.entry(new_quad.clone()).or_insert_with(|| {
                                 LowRuleApplication {
                                     rule_index: *rule_index,
-                                    instantiations: ins.clone(),
+                                    instantiations: inst.inner().clone(),
                                 }
                             });
                             to_add.insert(new_quad);
@@ -183,8 +176,11 @@ fn recall_proof(
     outp: &mut Vec<LowRuleApplication>,
 ) {
     let to_global_scope = |rra: &LowRuleApplication, locally_scoped: usize| -> usize {
-        let concrete = rules[rra.rule_index].inst.as_ref().get(&locally_scoped);
-        let found = rra.instantiations.get(&locally_scoped);
+        let concrete = rules[rra.rule_index].inst.get(locally_scoped);
+        let found = rra
+            .instantiations
+            .get(locally_scoped)
+            .and_then(|o| o.as_ref());
         if let (Some(c), Some(f)) = (concrete, found) {
             debug_assert_eq!(c, f);
         }
@@ -237,7 +233,7 @@ impl std::error::Error for CantProve {}
 /// An element of a deductive proof. Proofs can be transmitted and later validatated as long as the
 /// validator assumes the same rule list as the prover.
 ///
-/// Unbound variables are bound to the values in `instanitations`. They are bound in order of
+/// Unbound variables are bound to the values in `instantiations`. They are bound in order of
 /// initial appearance.
 ///
 /// Given the rule:
@@ -311,31 +307,31 @@ impl<Bound: Clone> RuleApplication<Bound> {
 /// Panics
 ///
 /// panics if an unbound entity is not registered in map
-/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+/// panics if the canonical index of unbound (according to map) is too large to index instantiations
 fn bind_claim<Unbound: Ord, Bound: Clone>(
     [s, p, o, g]: [Entity<Unbound, Bound>; 4],
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> [Bound; 4] {
     [
-        bind_entity(s, map, instanitations),
-        bind_entity(p, map, instanitations),
-        bind_entity(o, map, instanitations),
-        bind_entity(g, map, instanitations),
+        bind_entity(s, map, instantiations),
+        bind_entity(p, map, instantiations),
+        bind_entity(o, map, instantiations),
+        bind_entity(g, map, instantiations),
     ]
 }
 
 /// Panics
 ///
 /// panics if an unbound entity is not registered in map
-/// panics if the canonical index of unbound (according to map) is too large to index instanitations
+/// panics if the canonical index of unbound (according to map) is too large to index instantiations
 fn bind_entity<Unbound: Ord, Bound: Clone>(
     e: Entity<Unbound, Bound>,
     map: &BTreeMap<&Unbound, usize>,
-    instanitations: &[Bound],
+    instantiations: &[Bound],
 ) -> Bound {
     match e {
-        Entity::Unbound(a) => instanitations[map[&a]].clone(),
+        Entity::Unbound(a) => instantiations[map[&a]].clone(),
         Entity::Bound(e) => e,
     }
 }

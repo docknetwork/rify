@@ -3,7 +3,7 @@ use crate::vecset::VecSet;
 use core::cmp::Ordering;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Quad {
+pub(crate) struct Quad {
     pub s: Subj,
     pub p: Prop,
     pub o: Obje,
@@ -22,13 +22,12 @@ impl Quad {
 
     /// Attempt dereference all variable in self.
     pub fn local_to_global(self, inst: &Instantiations) -> Option<Quad> {
-        let inst = inst.as_ref();
         Some(
             [
-                *inst.get(&self.s.0)?,
-                *inst.get(&self.p.0)?,
-                *inst.get(&self.o.0)?,
-                *inst.get(&self.g.0)?,
+                *inst.get(self.s.0)?,
+                *inst.get(self.p.0)?,
+                *inst.get(self.o.0)?,
+                *inst.get(self.g.0)?,
             ]
             .into(),
         )
@@ -82,10 +81,10 @@ type O = (Obje,);
 type G = (Grap,);
 
 /// Bindings of slots within the context of a rule.
-pub type Instantiations = MapStack<usize, usize>;
+pub(crate) type Instantiations = MapStack<usize>;
 
 #[derive(Default)]
-pub struct Reasoner {
+pub(crate) struct Reasoner {
     claims: Vec<Quad>,
     spog: VecSet<usize>,
     posg: VecSet<usize>,
@@ -137,7 +136,7 @@ impl Reasoner {
         cb: &mut impl FnMut(&Instantiations),
     ) {
         debug_assert!(self.contains(&quad));
-        debug_assert!(!rule.is_empty(), "potential confusing so disallowed");
+        debug_assert!(!rule.is_empty(), "potentialy confusing so disallowed");
         // for each atom of rule, if the atom can match the quad, bind the unbound variables in the
         // atom to the corresponding elements of quad, then call apply.
         for i in 0..rule.len() {
@@ -181,7 +180,7 @@ impl Reasoner {
             let to_write = strictest.clone().zip(quad.clone());
             for (k, v) in &to_write {
                 debug_assert!(
-                    if let Some(committed_v) = instantiations.as_ref().get(&k) {
+                    if let Some(committed_v) = instantiations.get(*k) {
                         committed_v == v
                     } else {
                         true
@@ -200,13 +199,12 @@ impl Reasoner {
     /// Return a slice representing all possible matches to the pattern provided.
     /// pattern is in a local scope. instantiations is a partial translation of that
     /// local scope to the global scope represented by self.claims
-    fn matches(&self, pattern: &Quad, instantiations: &Instantiations) -> &[usize] {
-        let inst = instantiations.as_ref();
+    fn matches(&self, pattern: &Quad, inst: &Instantiations) -> &[usize] {
         let pattern: (Option<Subj>, Option<Prop>, Option<Obje>, Option<Grap>) = (
-            inst.get(&pattern.s.0).cloned().map(Subj),
-            inst.get(&pattern.p.0).cloned().map(Prop),
-            inst.get(&pattern.o.0).cloned().map(Obje),
-            inst.get(&pattern.g.0).cloned().map(Grap),
+            inst.get(pattern.s.0).cloned().map(Subj),
+            inst.get(pattern.p.0).cloned().map(Prop),
+            inst.get(pattern.o.0).cloned().map(Obje),
+            inst.get(pattern.g.0).cloned().map(Grap),
         );
         match pattern {
             (Some(s), Some(p), Some(o), Some(g)) => (s, p, o, g).search(self),
@@ -251,7 +249,7 @@ impl Reasoner {
     }
 }
 
-fn evict<'a, T>(index: usize, unordered_list: &'a mut [T]) -> Option<(&'a T, &'a mut [T])> {
+fn evict<T>(index: usize, unordered_list: &mut [T]) -> Option<(&T, &mut [T])> {
     if index >= unordered_list.len() {
         None
     } else {
@@ -265,12 +263,11 @@ fn evict<'a, T>(index: usize, unordered_list: &'a mut [T]) -> Option<(&'a T, &'a
 
 /// returns whether rule_part could validly be applied to quad assuming the already given
 /// instantiations
-fn can_match(quad: Quad, rule_part: Quad, instantiations: &Instantiations) -> bool {
-    let inst = instantiations.as_ref();
+fn can_match(quad: Quad, rule_part: Quad, inst: &Instantiations) -> bool {
     rule_part
         .zip(quad)
         .iter()
-        .all(|(rp, q)| match inst.get(&rp) {
+        .all(|(rp, q)| match inst.get(*rp) {
             Some(a) => a == q,
             None => true,
         })
@@ -352,7 +349,7 @@ mod tests {
         LowRule, Rule,
     };
     use crate::translator::Translator;
-    use alloc::collections::{BTreeMap, BTreeSet};
+    use alloc::collections::BTreeSet;
 
     #[test]
     fn ancestry_raw() {
@@ -408,7 +405,7 @@ mod tests {
 
         // This test only does one round of reasoning, no forward chaining. We will need a forward
         // chaining test eventually.
-        let mut results = Vec::<BTreeMap<usize, usize>>::new();
+        let mut results = Vec::<Vec<Option<usize>>>::new();
         for rule in rules {
             let Rule {
                 mut if_all,
@@ -416,7 +413,7 @@ mod tests {
                 mut inst,
             } = rule.clone();
             ts.apply(&mut if_all, &mut inst, &mut |inst| {
-                results.push(inst.as_ref().clone())
+                results.push(inst.inner().clone())
             });
         }
 
@@ -425,20 +422,15 @@ mod tests {
         // The second rule, (?a ancestor ?b ?g) and (?b ancestor ?c ?g) -> (?a ancestor ?c ?g),
         // should not activate because results from application of first rule have not been added
         // to the rdf store so there are there are are not yet any ancestry relations present.
-        let mut expected_intantiations: Vec<BTreeMap<usize, usize>> = nodes
+        let mut expected_intantiations: Vec<Vec<Option<usize>>> = nodes
             .iter()
             .zip(nodes.iter().cycle().skip(1))
             .map(|(a, b)| {
-                [
-                    (0, *a),
-                    (1, parent.0),
-                    (2, *b),
-                    (3, ancestor.0),
-                    (4, default_graph.0),
-                ]
-                .iter()
-                .cloned()
-                .collect()
+                [*a, parent.0, *b, ancestor.0, default_graph.0]
+                    .iter()
+                    .cloned()
+                    .map(Some)
+                    .collect()
             })
             .collect();
         results.sort();
@@ -517,14 +509,7 @@ mod tests {
                 let then = &rule.then;
                 ts.apply(&mut if_all, &mut inst, &mut |inst| {
                     for implied in then {
-                        let inst = inst.as_ref();
-                        let new: Quad = [
-                            inst[&implied.s.0],
-                            inst[&implied.p.0],
-                            inst[&implied.o.0],
-                            inst[&implied.g.0],
-                        ]
-                        .into();
+                        let new: Quad = implied.clone().local_to_global(inst).unwrap();
                         if !ts.contains(&new) {
                             to_add.insert(new);
                         }

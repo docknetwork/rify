@@ -65,15 +65,8 @@ fn low_infer(premises: &[Quad], rules: &[LowRule]) -> Vec<Quad> {
             } in rules.iter_mut()
             {
                 rs.apply_related(new.clone(), if_all, inst, &mut |inst| {
-                    let ins = inst.as_ref();
-                    for implied in then.iter() {
-                        let new_quad = [
-                            ins[&implied.s.0],
-                            ins[&implied.p.0],
-                            ins[&implied.o.0],
-                            ins[&implied.g.0],
-                        ]
-                        .into();
+                    for implied in then.iter().cloned() {
+                        let new_quad = implied.local_to_global(inst).unwrap();
                         if !rs.contains(&new_quad) && !adding.contains(&new_quad) {
                             to_add.insert(new_quad);
                         }
