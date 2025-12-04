@@ -1,6 +1,6 @@
 [package]
 name = "rify"
-version = "0.7.1"
+version = "0.7.2"
 authors = [
   "Andrew Dirksen <andrew@dirksen.com>",
   "Sam Hellawell <sshellawell@gmail.com>"
